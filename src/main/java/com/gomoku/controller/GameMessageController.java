@@ -73,4 +73,19 @@ public class GameMessageController {
             log.warn("Unauthorized /app/game.surrender call with non-UserPrincipal");
         }
     }
+
+    /**
+     * 开启人机对战模式：/app/game.ai_switch
+     */
+    @MessageMapping("/game.ai_switch")
+    public void switchAi(@Payload com.gomoku.dto.request.AiSwitchRequest request,
+                         Principal principal) {
+        if (principal instanceof UserPrincipal userPrincipal) {
+            log.info("Received /app/game.ai_switch: userId={}, roomId={}, difficulty={}",
+                    userPrincipal.getUserId(), request.roomId(), request.difficulty());
+            gameRoomService.switchAi(request, userPrincipal);
+        } else {
+            log.warn("Unauthorized /app/game.ai_switch call with non-UserPrincipal");
+        }
+    }
 }

@@ -1,5 +1,9 @@
 package com.gomoku.service;
 
+import com.gomoku.ai.AiDifficulty;
+import com.gomoku.ai.BoardSnapshot;
+import com.gomoku.ai.GomokuAiService;
+import com.gomoku.dto.request.AiSwitchRequest;
 import com.gomoku.dto.request.JoinRoomRequest;
 import com.gomoku.dto.request.MoveRequest;
 import com.gomoku.dto.request.SurrenderRequest;
@@ -23,17 +27,19 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 房间管理与对战串行化调度服务 (GameRoomService)
  * 1. 维护并发房间池 ConcurrentHashMap<String, GameRoom>
- * 2. 所有写操作（加入、落子、认输、掉线）在房间独占 ReentrantLock 内执行校验与状态流转
+ * 2. 所有写操作（加入、落子、认输、AI切换、掉线）在房间独占 ReentrantLock 内执行校验与状态流转
  * 3. 递增单调版本号 stateVersion，锁外异步广播事件与单播错误
  * 4. 集成 GameTimerService 防竞态倒计时与 SessionDisconnect 掉线保留期 (45s)
+ * 5. 集成 GomokuAiService 进程内传统博弈树 AI 对战与版本过期丢弃机制
  */
 @Service
 @Primary
@@ -43,18 +49,22 @@ public class GameRoomService implements RoomMembershipValidator {
 
     public static final long DEFAULT_TURN_TIMEOUT_MS = 30_000L;       // 30秒落子倒计时
     public static final long DEFAULT_DISCONNECT_GRACE_MS = 45_000L;   // 45秒掉线保留期
+    public static final String SYSTEM_AI_ID = "SYSTEM_AI";
 
     private final ConcurrentHashMap<String, GameRoom> rooms = new ConcurrentHashMap<>();
     private final SimpMessagingTemplate messagingTemplate;
     private final DefaultRoomMembershipValidator defaultRoomMembershipValidator;
     private final GameTimerService gameTimerService;
+    private final GomokuAiService aiService;
 
     public GameRoomService(@Lazy SimpMessagingTemplate messagingTemplate,
                            DefaultRoomMembershipValidator defaultRoomMembershipValidator,
-                           @Lazy GameTimerService gameTimerService) {
+                           @Lazy GameTimerService gameTimerService,
+                           @Lazy GomokuAiService aiService) {
         this.messagingTemplate = messagingTemplate;
         this.defaultRoomMembershipValidator = defaultRoomMembershipValidator;
         this.gameTimerService = gameTimerService;
+        this.aiService = aiService;
     }
 
     /**
@@ -88,7 +98,7 @@ public class GameRoomService implements RoomMembershipValidator {
     }
 
     /**
-     * 获取全部房间只读映射
+     * 获取全部房间映射
      */
     public Map<String, GameRoom> getAllRooms() {
         return rooms;
@@ -152,7 +162,7 @@ public class GameRoomService implements RoomMembershipValidator {
             if (room.getStatus() == GameStatus.PAUSED) {
                 boolean blackActive = room.hasActiveSessions(room.getPlayerBlackId());
                 boolean whiteActive = room.hasActiveSessions(room.getPlayerWhiteId());
-                if (blackActive && whiteActive) {
+                if (blackActive && (room.isAiMode() || whiteActive)) {
                     gameTimerService.cancelDisconnectTimer(room);
                     room.setStatus(GameStatus.PLAYING);
                     long turnDeadline = System.currentTimeMillis() + DEFAULT_TURN_TIMEOUT_MS;
@@ -179,6 +189,58 @@ public class GameRoomService implements RoomMembershipValidator {
     }
 
     /**
+     * 开启人机对战模式 (仅房主且处于 WAITING 状态时有权触发)
+     */
+    public void switchAi(AiSwitchRequest request, UserPrincipal principal) {
+        String roomId = request.roomId();
+        GameRoom room = rooms.get(roomId);
+
+        if (room == null) {
+            sendError(principal.getUserId(), request.commandId(), ErrorCode.GAME_NOT_PLAYING,
+                    "房间不存在", 0);
+            return;
+        }
+
+        RoomStateUpdateEvent stateEvent = null;
+        TimeoutContext timerContext = null;
+
+        room.getRoomLock().lock();
+        try {
+            long currentVersion = room.getStateVersion();
+            // 仅黑方房主且处于 WAITING 状态下可切换 AI
+            if (room.getStatus() != GameStatus.WAITING || !principal.getUserId().equals(room.getPlayerBlackId())) {
+                sendError(principal.getUserId(), request.commandId(), ErrorCode.UNAUTHORIZED_ACTION,
+                        "仅房间黑方选手在等待状态下有权开启人机对战", currentVersion);
+                return;
+            }
+
+            room.setAiMode(true);
+            room.setAiDifficulty(request.difficulty());
+            room.setPlayerWhiteId(SYSTEM_AI_ID);
+            room.setPlayerWhiteName("AlphaGomoku (" + request.difficulty() + ")");
+
+            String newGameId = "G-AI-" + roomId + "-" + System.currentTimeMillis();
+            room.resetGame(newGameId);
+            long turnDeadline = System.currentTimeMillis() + DEFAULT_TURN_TIMEOUT_MS;
+            room.setTurnDeadline(turnDeadline);
+            long newVer = room.nextVersion();
+
+            timerContext = new TimeoutContext(newGameId, PieceColor.BLACK, newVer, turnDeadline);
+            stateEvent = buildStateUpdateEvent(room);
+            log.info("AI mode switched: roomId={}, difficulty={}, gameId={}", roomId, request.difficulty(), newGameId);
+        } finally {
+            room.getRoomLock().unlock();
+        }
+
+        if (timerContext != null) {
+            gameTimerService.scheduleTurnTimeout(roomId, timerContext, DEFAULT_TURN_TIMEOUT_MS);
+        }
+        if (stateEvent != null) {
+            broadcastRoomState(roomId, stateEvent);
+        }
+    }
+
+    /**
      * 处理玩家落子
      */
     public void handleMove(MoveRequest request, UserPrincipal principal) {
@@ -194,6 +256,8 @@ public class GameRoomService implements RoomMembershipValidator {
         MoveCommittedEvent moveEvent = null;
         GameFinishedEvent finishedEvent = null;
         TimeoutContext nextTimerContext = null;
+        BoardSnapshot aiSnapshot = null;
+        String aiDifficulty = null;
 
         room.getRoomLock().lock();
         try {
@@ -295,6 +359,12 @@ public class GameRoomService implements RoomMembershipValidator {
 
             if (!isGameOver) {
                 nextTimerContext = new TimeoutContext(room.getGameId(), nextTurn, newVersion, turnDeadline);
+
+                // 若为人机模式且下一手为 AI (白方)，构建快照准备异步计算
+                if (room.isAiMode() && nextTurn == PieceColor.WHITE) {
+                    aiSnapshot = new BoardSnapshot(room.getBoard(), room.getOccupiedCount(), PieceColor.WHITE, newVersion);
+                    aiDifficulty = room.getAiDifficulty();
+                }
             }
 
             moveEvent = new MoveCommittedEvent(
@@ -342,6 +412,28 @@ public class GameRoomService implements RoomMembershipValidator {
         }
         if (finishedEvent != null) {
             messagingTemplate.convertAndSend("/topic/room/" + roomId + "/gameplay", finishedEvent);
+        }
+
+        // 锁外拉起异步 AI 计算
+        if (aiSnapshot != null && aiService != null) {
+            final BoardSnapshot currentSnapshot = aiSnapshot;
+            AiDifficulty diff = AiDifficulty.fromString(aiDifficulty);
+            aiService.computeBestMoveAsync(currentSnapshot, diff, Duration.ofMillis(200))
+                    .thenAccept(bestMove -> {
+                        UserPrincipal aiPrincipal = new UserPrincipal(SYSTEM_AI_ID, "AlphaGomoku", false);
+                        MoveRequest aiMoveRequest = new MoveRequest(
+                                "ai-cmd-" + UUID.randomUUID(),
+                                roomId,
+                                currentSnapshot.baseStateVersion(), // 传递捕获时的版本号
+                                bestMove.row(),
+                                bestMove.col()
+                        );
+                        handleMove(aiMoveRequest, aiPrincipal);
+                    })
+                    .exceptionally(ex -> {
+                        log.error("AI computation failed for room {}: {}", roomId, ex.getMessage());
+                        return null;
+                    });
         }
     }
 
