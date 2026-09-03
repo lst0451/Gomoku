@@ -11,6 +11,8 @@ import com.gomoku.model.enums.FinishReason;
 import com.gomoku.model.enums.GameStatus;
 import com.gomoku.model.enums.PieceColor;
 import com.gomoku.referee.GomokuReferee;
+import com.gomoku.scheduler.GameTimerService;
+import com.gomoku.scheduler.TimeoutContext;
 import com.gomoku.security.DefaultRoomMembershipValidator;
 import com.gomoku.security.RoomMembershipValidator;
 import com.gomoku.security.UserPrincipal;
@@ -22,6 +24,8 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -29,22 +33,28 @@ import java.util.concurrent.ConcurrentHashMap;
  * 1. 维护并发房间池 ConcurrentHashMap<String, GameRoom>
  * 2. 所有写操作（加入、落子、认输、掉线）在房间独占 ReentrantLock 内执行校验与状态流转
  * 3. 递增单调版本号 stateVersion，锁外异步广播事件与单播错误
+ * 4. 集成 GameTimerService 防竞态倒计时与 SessionDisconnect 掉线保留期 (45s)
  */
 @Service
 @Primary
 public class GameRoomService implements RoomMembershipValidator {
 
     private static final Logger log = LoggerFactory.getLogger(GameRoomService.class);
-    private static final long DEFAULT_TURN_TIMEOUT_MS = 30_000L; // 30秒落子倒计时
+
+    public static final long DEFAULT_TURN_TIMEOUT_MS = 30_000L;       // 30秒落子倒计时
+    public static final long DEFAULT_DISCONNECT_GRACE_MS = 45_000L;   // 45秒掉线保留期
 
     private final ConcurrentHashMap<String, GameRoom> rooms = new ConcurrentHashMap<>();
     private final SimpMessagingTemplate messagingTemplate;
     private final DefaultRoomMembershipValidator defaultRoomMembershipValidator;
+    private final GameTimerService gameTimerService;
 
     public GameRoomService(@Lazy SimpMessagingTemplate messagingTemplate,
-                           DefaultRoomMembershipValidator defaultRoomMembershipValidator) {
+                           DefaultRoomMembershipValidator defaultRoomMembershipValidator,
+                           @Lazy GameTimerService gameTimerService) {
         this.messagingTemplate = messagingTemplate;
         this.defaultRoomMembershipValidator = defaultRoomMembershipValidator;
+        this.gameTimerService = gameTimerService;
     }
 
     /**
@@ -78,6 +88,20 @@ public class GameRoomService implements RoomMembershipValidator {
     }
 
     /**
+     * 获取全部房间只读映射
+     */
+    public Map<String, GameRoom> getAllRooms() {
+        return rooms;
+    }
+
+    /**
+     * 移除房间
+     */
+    public void removeRoom(String roomId) {
+        rooms.remove(roomId);
+    }
+
+    /**
      * 用户进入/重连房间业务处理
      */
     public void joinRoom(JoinRoomRequest request, UserPrincipal principal, String sessionId) {
@@ -85,6 +109,8 @@ public class GameRoomService implements RoomMembershipValidator {
         GameRoom room = getOrCreateRoom(roomId);
 
         RoomStateUpdateEvent stateEvent;
+        TimeoutContext timerContextToSchedule = null;
+
         room.getRoomLock().lock();
         try {
             String userId = principal.getUserId();
@@ -108,19 +134,44 @@ public class GameRoomService implements RoomMembershipValidator {
                 room.setPlayerWhiteName(username);
                 String newGameId = "G-" + roomId + "-" + System.currentTimeMillis();
                 room.resetGame(newGameId);
-                room.setTurnDeadline(System.currentTimeMillis() + DEFAULT_TURN_TIMEOUT_MS);
+                long turnDeadline = System.currentTimeMillis() + DEFAULT_TURN_TIMEOUT_MS;
+                room.setTurnDeadline(turnDeadline);
                 log.info("Assigned PLAYER_WHITE and started game: userId={}, roomId={}, gameId={}",
                         userId, roomId, newGameId);
+
+                // 启动先手 (黑方) 首步 30 秒落子倒计时
+                long nextVer = room.getStateVersion() + 1;
+                timerContextToSchedule = new TimeoutContext(newGameId, PieceColor.BLACK, nextVer, turnDeadline);
             } else {
                 // 席位已满，自动转为观战者
                 room.getSpectatorUserIds().add(userId);
                 log.info("Assigned SPECTATOR: userId={}, roomId={}", userId, roomId);
             }
 
+            // 若房间原本处于 PAUSED 状态且掉线选手已重连归来，恢复 PLAYING
+            if (room.getStatus() == GameStatus.PAUSED) {
+                boolean blackActive = room.hasActiveSessions(room.getPlayerBlackId());
+                boolean whiteActive = room.hasActiveSessions(room.getPlayerWhiteId());
+                if (blackActive && whiteActive) {
+                    gameTimerService.cancelDisconnectTimer(room);
+                    room.setStatus(GameStatus.PLAYING);
+                    long turnDeadline = System.currentTimeMillis() + DEFAULT_TURN_TIMEOUT_MS;
+                    room.setTurnDeadline(turnDeadline);
+                    long nextVer = room.getStateVersion() + 1;
+                    timerContextToSchedule = new TimeoutContext(room.getGameId(), room.getCurrentTurn(), nextVer, turnDeadline);
+                    log.info("Room {} resumed from PAUSED to PLAYING after player {} reconnected", roomId, userId);
+                }
+            }
+
             room.nextVersion();
             stateEvent = buildStateUpdateEvent(room);
         } finally {
             room.getRoomLock().unlock();
+        }
+
+        // 注册定时任务
+        if (timerContextToSchedule != null) {
+            gameTimerService.scheduleTurnTimeout(roomId, timerContextToSchedule, DEFAULT_TURN_TIMEOUT_MS);
         }
 
         // 锁外广播最新状态
@@ -142,6 +193,7 @@ public class GameRoomService implements RoomMembershipValidator {
 
         MoveCommittedEvent moveEvent = null;
         GameFinishedEvent finishedEvent = null;
+        TimeoutContext nextTimerContext = null;
 
         room.getRoomLock().lock();
         try {
@@ -192,7 +244,10 @@ public class GameRoomService implements RoomMembershipValidator {
                 return;
             }
 
-            // --- 校验全部通过，执行落子写入 ---
+            // --- 校验全部通过，取消上一回合倒计时 ---
+            gameTimerService.cancelTurnTimer(room);
+
+            // 执行落子写入
             room.getBoard()[row][col] = userColor.getValue();
             room.setOccupiedCount(room.getOccupiedCount() + 1);
 
@@ -217,6 +272,7 @@ public class GameRoomService implements RoomMembershipValidator {
                 room.setWinner(winner);
                 room.setFinishReason(finishReason);
                 room.setFinishedAt(now);
+                gameTimerService.cancelAllTimers(room);
             } else {
                 boolean isDraw = GomokuReferee.checkDraw(room.getOccupiedCount(), false);
                 if (isDraw) {
@@ -226,6 +282,7 @@ public class GameRoomService implements RoomMembershipValidator {
                     room.setWinner(null);
                     room.setFinishReason(finishReason);
                     room.setFinishedAt(now);
+                    gameTimerService.cancelAllTimers(room);
                 } else {
                     nextTurn = userColor.opposite();
                     room.setCurrentTurn(nextTurn);
@@ -235,6 +292,10 @@ public class GameRoomService implements RoomMembershipValidator {
             }
 
             long newVersion = room.nextVersion();
+
+            if (!isGameOver) {
+                nextTimerContext = new TimeoutContext(room.getGameId(), nextTurn, newVersion, turnDeadline);
+            }
 
             moveEvent = new MoveCommittedEvent(
                     MoveCommittedEvent.EVENT_TYPE,
@@ -268,6 +329,11 @@ public class GameRoomService implements RoomMembershipValidator {
             }
         } finally {
             room.getRoomLock().unlock();
+        }
+
+        // 调度下一回合倒计时
+        if (nextTimerContext != null) {
+            gameTimerService.scheduleTurnTimeout(roomId, nextTimerContext, DEFAULT_TURN_TIMEOUT_MS);
         }
 
         // 锁外异步广播事件
@@ -317,6 +383,7 @@ public class GameRoomService implements RoomMembershipValidator {
             room.setWinner(winner);
             room.setFinishReason(FinishReason.SURRENDER);
             room.setFinishedAt(now);
+            gameTimerService.cancelAllTimers(room);
 
             long newVersion = room.nextVersion();
 
@@ -330,6 +397,161 @@ public class GameRoomService implements RoomMembershipValidator {
                     null,
                     now
             );
+        } finally {
+            room.getRoomLock().unlock();
+        }
+
+        if (finishedEvent != null) {
+            messagingTemplate.convertAndSend("/topic/room/" + roomId + "/gameplay", finishedEvent);
+        }
+    }
+
+    /**
+     * 回合落子超时回调处理 (由 GameTimerService 触发)
+     */
+    public void handleTurnTimeout(String roomId, TimeoutContext context) {
+        GameRoom room = rooms.get(roomId);
+        if (room == null) {
+            return;
+        }
+
+        GameFinishedEvent finishedEvent = null;
+        room.getRoomLock().lock();
+        try {
+            // 防竞态四元组校验 (消除 ABA 竞态)
+            if (room.getStatus() != GameStatus.PLAYING ||
+                    !Objects.equals(room.getGameId(), context.gameId()) ||
+                    room.getCurrentTurn() != context.expectedTurn() ||
+                    room.getStateVersion() != context.expectedStateVersion()) {
+                log.debug("Turn timeout discarded for room {}: version or turn mismatch (ABA avoided). expected={}, actualVer={}",
+                        roomId, context, room.getStateVersion());
+                return;
+            }
+
+            // 确认为真实超时，判定对方获胜
+            PieceColor winner = context.expectedTurn().opposite();
+            long now = System.currentTimeMillis();
+            room.setStatus(GameStatus.FINISHED);
+            room.setWinner(winner);
+            room.setFinishReason(FinishReason.TURN_TIMEOUT);
+            room.setFinishedAt(now);
+            gameTimerService.cancelAllTimers(room);
+
+            long newVersion = room.nextVersion();
+
+            finishedEvent = new GameFinishedEvent(
+                    GameFinishedEvent.EVENT_TYPE,
+                    roomId,
+                    room.getGameId(),
+                    newVersion,
+                    winner,
+                    FinishReason.TURN_TIMEOUT,
+                    null,
+                    now
+            );
+            log.info("Turn timeout triggered for room {}: loser={}, winner={}",
+                    roomId, context.expectedTurn(), winner);
+        } finally {
+            room.getRoomLock().unlock();
+        }
+
+        if (finishedEvent != null) {
+            messagingTemplate.convertAndSend("/topic/room/" + roomId + "/gameplay", finishedEvent);
+        }
+    }
+
+    /**
+     * 处理 WebSocket 会话断开
+     */
+    public void handleSessionDisconnect(String sessionId, String userId) {
+        for (GameRoom room : rooms.values()) {
+            String roomId = room.getRoomId();
+            RoomStateUpdateEvent stateEvent = null;
+            long disconnectVer = 0;
+            boolean scheduleGrace = false;
+
+            room.getRoomLock().lock();
+            try {
+                if (!room.isUserInRoom(userId)) {
+                    continue;
+                }
+
+                room.removeSession(userId, sessionId);
+
+                // 若该用户是棋手且其全部 Session 均已离线
+                boolean isPlayer = userId.equals(room.getPlayerBlackId()) || userId.equals(room.getPlayerWhiteId());
+                if (isPlayer && !room.hasActiveSessions(userId)) {
+                    if (room.getStatus() == GameStatus.PLAYING) {
+                        room.setStatus(GameStatus.PAUSED);
+                        gameTimerService.cancelTurnTimer(room);
+
+                        long deadline = System.currentTimeMillis() + DEFAULT_DISCONNECT_GRACE_MS;
+                        room.setDisconnectDeadline(deadline);
+                        disconnectVer = room.nextVersion();
+                        scheduleGrace = true;
+
+                        stateEvent = buildStateUpdateEvent(room);
+                        log.info("Player {} disconnected all sessions from room {}. Room PAUSED for 45s grace period.",
+                                userId, roomId);
+                    }
+                }
+            } finally {
+                room.getRoomLock().unlock();
+            }
+
+            if (scheduleGrace) {
+                gameTimerService.scheduleDisconnectTimeout(roomId, userId, disconnectVer, DEFAULT_DISCONNECT_GRACE_MS);
+            }
+            if (stateEvent != null) {
+                broadcastRoomState(roomId, stateEvent);
+            }
+        }
+    }
+
+    /**
+     * 掉线保留期超时处理 (由 GameTimerService 触发)
+     */
+    public void handleDisconnectTimeout(String roomId, String disconnectedUserId, long expectedStateVersion) {
+        GameRoom room = rooms.get(roomId);
+        if (room == null) {
+            return;
+        }
+
+        GameFinishedEvent finishedEvent = null;
+        room.getRoomLock().lock();
+        try {
+            // 核验：状态仍为 PAUSED、版本匹配、用户依然未重连
+            if (room.getStatus() != GameStatus.PAUSED ||
+                    room.getStateVersion() != expectedStateVersion ||
+                    room.hasActiveSessions(disconnectedUserId)) {
+                log.debug("Disconnect timeout discarded for room {}: user reconnected or state changed", roomId);
+                return;
+            }
+
+            PieceColor loserColor = room.getPlayerColor(disconnectedUserId);
+            PieceColor winner = loserColor != null ? loserColor.opposite() : null;
+            long now = System.currentTimeMillis();
+
+            room.setStatus(GameStatus.FINISHED);
+            room.setWinner(winner);
+            room.setFinishReason(FinishReason.DISCONNECT_TIMEOUT);
+            room.setFinishedAt(now);
+            gameTimerService.cancelAllTimers(room);
+
+            long newVersion = room.nextVersion();
+
+            finishedEvent = new GameFinishedEvent(
+                    GameFinishedEvent.EVENT_TYPE,
+                    roomId,
+                    room.getGameId(),
+                    newVersion,
+                    winner,
+                    FinishReason.DISCONNECT_TIMEOUT,
+                    null,
+                    now
+            );
+            log.info("Disconnect grace timeout expired for room {}: user {} failed to reconnect. Winner={}",
+                    roomId, disconnectedUserId, winner);
         } finally {
             room.getRoomLock().unlock();
         }
