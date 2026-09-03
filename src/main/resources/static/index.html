@@ -750,7 +750,26 @@
             }
         }
 
-        function connectWs() {
+        let activeRoomSubscriptions = [];
+
+        function subscribeToRoom(roomId) {
+            // 取消先前的房间主题订阅
+            activeRoomSubscriptions.forEach(sub => {
+                try { sub.unsubscribe(); } catch (e) {}
+            });
+            activeRoomSubscriptions = [];
+
+            activeRoomSubscriptions.push(stompClient.subscribe(`/topic/room/${roomId}/state`, onRoomStateMessage));
+            activeRoomSubscriptions.push(stompClient.subscribe(`/topic/room/${roomId}/gameplay`, onGameplayMessage));
+            activeRoomSubscriptions.push(stompClient.subscribe(`/topic/room/${roomId}/chat`, onChatMessage));
+            console.log("Successfully subscribed to room topics:", roomId);
+        }
+
+        async function connectWs() {
+            if (!currentToken) {
+                await initAuthToken(currentUser.username || "Alice");
+            }
+
             const socket = new SockJS('/ws-gomoku');
             stompClient = Stomp.over(socket);
             stompClient.debug = null; // disable console spam
@@ -761,7 +780,17 @@
                 isConnected = true;
                 updateConnStatus(true);
                 showToast("STOMP 鉴权连接成功！", "success");
-                joinCurrentRoom();
+
+                // 1. 订阅用户私有通道 (无房间资格检查限制)
+                stompClient.subscribe('/user/queue/errors', onErrorMessage);
+                stompClient.subscribe('/user/queue/snapshot', (msg) => {
+                    onSnapshotMessage(msg);
+                    // 2. 收到入房快照确认入房成功后，安全订阅房间广播
+                    subscribeToRoom(currentRoomId);
+                });
+
+                // 3. 发送入房指令
+                sendJoinRoom();
             }, (error) => {
                 isConnected = false;
                 updateConnStatus(false);
@@ -774,6 +803,7 @@
                 stompClient.disconnect(() => {
                     isConnected = false;
                     updateConnStatus(false);
+                    activeRoomSubscriptions = [];
                     showToast("已断开连接", "success");
                 });
             }
@@ -797,25 +827,32 @@
         }
 
         function joinCurrentRoom() {
+            const roomId = document.getElementById("roomIdInput").value.trim() || "R101";
+            currentRoomId = roomId;
+
             if (!isConnected) {
                 connectWs();
                 return;
             }
+
+            sendJoinRoom();
+        }
+
+        function sendJoinRoom() {
             const roomId = document.getElementById("roomIdInput").value.trim() || "R101";
             currentRoomId = roomId;
 
-            // Subscribe Topics
-            stompClient.subscribe(`/topic/room/${roomId}/state`, onRoomStateMessage);
-            stompClient.subscribe(`/topic/room/${roomId}/gameplay`, onGameplayMessage);
-            stompClient.subscribe(`/topic/room/${roomId}/chat`, onChatMessage);
-            stompClient.subscribe('/user/queue/errors', onErrorMessage);
-            stompClient.subscribe('/user/queue/snapshot', onSnapshotMessage);
-
-            // Send Join Command
             stompClient.send('/app/room.join', {}, JSON.stringify({
                 commandId: "join-" + Date.now(),
                 roomId: roomId
             }));
+
+            // 150ms 兜底订阅
+            setTimeout(() => {
+                if (isConnected && activeRoomSubscriptions.length === 0) {
+                    subscribeToRoom(currentRoomId);
+                }
+            }, 150);
         }
 
         function onRoomStateMessage(message) {
