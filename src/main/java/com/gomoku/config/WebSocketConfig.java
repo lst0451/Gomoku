@@ -27,7 +27,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final AuthChannelInterceptor authChannelInterceptor;
 
-    public WebSocketConfig(AuthChannelInterceptor authChannelInterceptor) {
+    public WebSocketConfig(@org.springframework.context.annotation.Lazy AuthChannelInterceptor authChannelInterceptor) {
         this.authChannelInterceptor = authChannelInterceptor;
     }
 
