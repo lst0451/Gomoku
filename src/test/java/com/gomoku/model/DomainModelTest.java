@@ -78,7 +78,7 @@ class DomainModelTest {
         @Test
         @DisplayName("ErrorCode 错误码枚举定义")
         void testErrorCodeValues() {
-            assertEquals(10, ErrorCode.values().length);
+            assertEquals(11, ErrorCode.values().length);
             assertNotNull(ErrorCode.valueOf("NOT_YOUR_TURN"));
             assertNotNull(ErrorCode.valueOf("CELL_OCCUPIED"));
             assertNotNull(ErrorCode.valueOf("INVALID_COORDINATES"));
@@ -89,6 +89,7 @@ class DomainModelTest {
             assertNotNull(ErrorCode.valueOf("ROOM_FULL"));
             assertNotNull(ErrorCode.valueOf("UNAUTHORIZED_ACTION"));
             assertNotNull(ErrorCode.valueOf("RATE_LIMITED"));
+            assertNotNull(ErrorCode.valueOf("CHAT_RATE_LIMITED"));
         }
     }
 

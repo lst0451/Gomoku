@@ -18,14 +18,19 @@ import java.security.Principal;
  * STOMP 上行消息映射控制器
  * 严格从 Principal 提取用户身份，所有写操作转交 GameRoomService 串行化执行
  */
+import com.gomoku.chat.ChatService;
+import com.gomoku.dto.request.ChatMessageRequest;
+
 @Controller
 public class GameMessageController {
 
     private static final Logger log = LoggerFactory.getLogger(GameMessageController.class);
     private final GameRoomService gameRoomService;
+    private final ChatService chatService;
 
-    public GameMessageController(GameRoomService gameRoomService) {
+    public GameMessageController(GameRoomService gameRoomService, ChatService chatService) {
         this.gameRoomService = gameRoomService;
+        this.chatService = chatService;
     }
 
     /**
@@ -86,6 +91,21 @@ public class GameMessageController {
             gameRoomService.switchAi(request, userPrincipal);
         } else {
             log.warn("Unauthorized /app/game.ai_switch call with non-UserPrincipal");
+        }
+    }
+
+    /**
+     * 房间聊天消息发送：/app/chat.send
+     */
+    @MessageMapping("/chat.send")
+    public void sendChat(@Payload ChatMessageRequest request,
+                         Principal principal) {
+        if (principal instanceof UserPrincipal userPrincipal) {
+            log.debug("Received /app/chat.send: userId={}, roomId={}",
+                    userPrincipal.getUserId(), request.roomId());
+            chatService.sendMessage(request, userPrincipal);
+        } else {
+            log.warn("Unauthorized /app/chat.send call with non-UserPrincipal");
         }
     }
 }

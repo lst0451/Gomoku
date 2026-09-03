@@ -4,3 +4,10 @@ server:
 spring:
   application:
     name: online-gomoku
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,metrics"
+

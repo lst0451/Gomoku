@@ -56,15 +56,18 @@ public class GameRoomService implements RoomMembershipValidator {
     private final DefaultRoomMembershipValidator defaultRoomMembershipValidator;
     private final GameTimerService gameTimerService;
     private final GomokuAiService aiService;
+    private final com.gomoku.chat.ChatService chatService;
 
     public GameRoomService(@Lazy SimpMessagingTemplate messagingTemplate,
                            DefaultRoomMembershipValidator defaultRoomMembershipValidator,
                            @Lazy GameTimerService gameTimerService,
-                           @Lazy GomokuAiService aiService) {
+                           @Lazy GomokuAiService aiService,
+                           @Lazy com.gomoku.chat.ChatService chatService) {
         this.messagingTemplate = messagingTemplate;
         this.defaultRoomMembershipValidator = defaultRoomMembershipValidator;
         this.gameTimerService = gameTimerService;
         this.aiService = aiService;
+        this.chatService = chatService;
     }
 
     /**
@@ -119,6 +122,7 @@ public class GameRoomService implements RoomMembershipValidator {
         GameRoom room = getOrCreateRoom(roomId);
 
         RoomStateUpdateEvent stateEvent;
+        GameSnapshotResponse snapshotEvent = null;
         TimeoutContext timerContextToSchedule = null;
 
         room.getRoomLock().lock();
@@ -175,6 +179,7 @@ public class GameRoomService implements RoomMembershipValidator {
 
             room.nextVersion();
             stateEvent = buildStateUpdateEvent(room);
+            snapshotEvent = buildSnapshotResponse(room);
         } finally {
             room.getRoomLock().unlock();
         }
@@ -182,6 +187,11 @@ public class GameRoomService implements RoomMembershipValidator {
         // 注册定时任务
         if (timerContextToSchedule != null) {
             gameTimerService.scheduleTurnTimeout(roomId, timerContextToSchedule, DEFAULT_TURN_TIMEOUT_MS);
+        }
+
+        // 锁外向加入用户单播全量快照，完成客户端渲染重构
+        if (snapshotEvent != null) {
+            messagingTemplate.convertAndSendToUser(principal.getUserId(), "/queue/snapshot", snapshotEvent);
         }
 
         // 锁外广播最新状态
@@ -699,5 +709,43 @@ public class GameRoomService implements RoomMembershipValidator {
                 System.currentTimeMillis()
         );
         messagingTemplate.convertAndSendToUser(userId, "/queue/errors", errorResponse);
+    }
+
+    /**
+     * 构建房间全量快照
+     */
+    public GameSnapshotResponse buildSnapshotResponse(GameRoom room) {
+        PlayerInfo playerBlack = room.getPlayerBlackId() != null
+                ? new PlayerInfo(room.getPlayerBlackId(), room.getPlayerBlackName())
+                : null;
+        PlayerInfo playerWhite = room.getPlayerWhiteId() != null
+                ? new PlayerInfo(room.getPlayerWhiteId(), room.getPlayerWhiteName())
+                : null;
+
+        int[][] boardCopy = new int[15][15];
+        for (int i = 0; i < 15; i++) {
+            System.arraycopy(room.getBoard()[i], 0, boardCopy[i], 0, 15);
+        }
+
+        java.util.List<Move> recentMoves = new java.util.ArrayList<>(room.getMoveHistory());
+        java.util.List<com.gomoku.model.entity.ChatMessage> recentChats = chatService != null
+                ? chatService.getRecentChats(room.getRoomId())
+                : java.util.Collections.emptyList();
+
+        return new GameSnapshotResponse(
+                room.getRoomId(),
+                room.getGameId(),
+                room.getStateVersion(),
+                room.getStatus(),
+                "FREESTYLE",
+                playerBlack,
+                playerWhite,
+                room.getCurrentTurn(),
+                room.getTurnDeadline(),
+                room.getOccupiedCount(),
+                boardCopy,
+                recentMoves,
+                recentChats
+        );
     }
 }

@@ -13,5 +13,6 @@ public enum ErrorCode {
     DUPLICATE_COMMAND,    // 重复提交的指令
     ROOM_FULL,            // 房间选手席已满
     UNAUTHORIZED_ACTION,  // 未授权的操作
-    RATE_LIMITED          // 频率超限
+    RATE_LIMITED,         // 频率超限
+    CHAT_RATE_LIMITED     // 聊天频率超限
 }
