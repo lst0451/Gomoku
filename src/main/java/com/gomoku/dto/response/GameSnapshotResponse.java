@@ -21,6 +21,8 @@ public record GameSnapshotResponse(
     PlayerInfo playerWhite,
     PieceColor currentTurn,
     long turnDeadline,
+    Integer turnTimeSeconds,
+    List<PlayerInfo> onlineUsers,
     int occupiedCount,
     int[][] board,
     List<Move> recentMoves,

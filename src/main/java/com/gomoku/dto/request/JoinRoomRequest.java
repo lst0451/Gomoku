@@ -8,5 +8,10 @@ package com.gomoku.dto.request;
  */
 public record JoinRoomRequest(
     String commandId,
-    String roomId
-) {}
+    String roomId,
+    boolean spectate
+) {
+    public JoinRoomRequest(String commandId, String roomId) {
+        this(commandId, roomId, false);
+    }
+}

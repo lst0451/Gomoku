@@ -1,1266 +1,159 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gomoku Arena | 五子棋实时在线对弈平台</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
-    <style>
-        :root {
-            --bg-base: #0b0f19;
-            --bg-surface: #111827;
-            --bg-card: rgba(17, 24, 39, 0.85);
-            --bg-card-hover: rgba(31, 41, 55, 0.7);
-            --border-glow: rgba(59, 130, 246, 0.2);
-            --border-card: rgba(255, 255, 255, 0.08);
-            --primary: #3b82f6;
-            --primary-glow: rgba(59, 130, 246, 0.4);
-            --accent-gold: #f59e0b;
-            --accent-green: #10b981;
-            --accent-red: #ef4444;
-            --text-main: #f3f4f6;
-            --text-muted: #9ca3af;
-            --text-dim: #6b7280;
-            --board-wood: #261e16;
-            --board-line: #7c6248;
-            --board-border: #4d3a27;
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: 'Outfit', -apple-system, sans-serif;
-            background: radial-gradient(circle at 50% 10%, #172554 0%, #0b0f19 60%, #030712 100%);
-            color: var(--text-main);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            overflow-x: hidden;
-        }
-
-        header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 14px 28px;
-            background: rgba(11, 15, 25, 0.8);
-            backdrop-filter: blur(16px);
-            border-bottom: 1px solid var(--border-card);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .brand-logo {
-            width: 36px;
-            height: 36px;
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 800;
-            font-size: 1.2rem;
-            color: #fff;
-            box-shadow: 0 0 16px var(--primary-glow);
-        }
-
-        .brand-title {
-            font-size: 1.25rem;
-            font-weight: 700;
-            letter-spacing: -0.02em;
-            background: linear-gradient(to right, #ffffff, #93c5fd);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .header-actions {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-
-        .status-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 14px;
-            border-radius: 20px;
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid var(--border-card);
-            font-size: 0.85rem;
-            font-weight: 500;
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--text-dim);
-            transition: all 0.3s;
-        }
-
-        .status-dot.connected {
-            background: var(--accent-green);
-            box-shadow: 0 0 10px var(--accent-green);
-        }
-
-        .status-dot.disconnected {
-            background: var(--accent-red);
-        }
-
-        .auth-presets {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        button {
-            cursor: pointer;
-            font-family: inherit;
-            border: none;
-            outline: none;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .btn-preset {
-            padding: 6px 12px;
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.06);
-            color: var(--text-main);
-            font-size: 0.82rem;
-            font-weight: 500;
-            border: 1px solid var(--border-card);
-        }
-
-        .btn-preset:hover, .btn-preset.active {
-            background: var(--primary);
-            color: #fff;
-            border-color: var(--primary);
-            box-shadow: 0 0 12px var(--primary-glow);
-        }
-
-        main {
-            flex: 1;
-            display: grid;
-            grid-template-columns: 320px 1fr 360px;
-            gap: 20px;
-            padding: 20px;
-            max-width: 1680px;
-            margin: 0 auto;
-            width: 100%;
-        }
-
-        .card {
-            background: var(--bg-card);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--border-card);
-            border-radius: 16px;
-            padding: 18px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-        }
-
-        .card-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            font-size: 0.95rem;
-            font-weight: 600;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            padding-bottom: 8px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .form-group {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .form-label {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-        }
-
-        .form-input {
-            width: 100%;
-            padding: 10px 12px;
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid var(--border-card);
-            border-radius: 8px;
-            color: var(--text-main);
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.88rem;
-        }
-
-        .form-input:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 8px var(--primary-glow);
-            outline: none;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #3b82f6, #2563eb);
-            color: #fff;
-            padding: 10px 18px;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 0.9rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            box-shadow: 0 4px 12px var(--primary-glow);
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 6px 16px var(--primary-glow);
-        }
-
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.08);
-            color: var(--text-main);
-            padding: 10px 18px;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 0.9rem;
-            border: 1px solid var(--border-card);
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.12);
-        }
-
-        .btn-danger {
-            background: rgba(239, 68, 68, 0.15);
-            color: #fca5a5;
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            padding: 8px 14px;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 0.85rem;
-        }
-
-        .btn-danger:hover {
-            background: var(--accent-red);
-            color: #fff;
-        }
-
-        /* Player Cards */
-        .player-box {
-            background: rgba(0, 0, 0, 0.25);
-            border: 1px solid var(--border-card);
-            border-radius: 12px;
-            padding: 12px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            position: relative;
-            overflow: hidden;
-            transition: all 0.3s;
-        }
-
-        .player-box.active-turn {
-            border-color: var(--primary);
-            box-shadow: 0 0 16px var(--primary-glow);
-            background: rgba(59, 130, 246, 0.08);
-        }
-
-        .stone-badge {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 0.8rem;
-            flex-shrink: 0;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
-        }
-
-        .stone-badge.black {
-            background: radial-gradient(circle at 35% 35%, #4b5563 0%, #111827 70%, #000 100%);
-            color: #fff;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .stone-badge.white {
-            background: radial-gradient(circle at 35% 35%, #ffffff 0%, #e2e8f0 70%, #94a3b8 100%);
-            color: #0f172a;
-            border: 1px solid rgba(0, 0, 0, 0.1);
-        }
-
-        .player-details {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .player-name {
-            font-weight: 600;
-            font-size: 0.95rem;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .player-meta {
-            font-size: 0.78rem;
-            color: var(--text-muted);
-            margin-top: 2px;
-        }
-
-        /* Countdown Bar */
-        .timer-container {
-            margin-top: 4px;
-        }
-
-        .timer-bar-bg {
-            width: 100%;
-            height: 6px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 3px;
-            overflow: hidden;
-        }
-
-        .timer-bar-fill {
-            height: 100%;
-            width: 100%;
-            background: var(--primary);
-            transition: width 0.2s linear, background-color 0.3s;
-        }
-
-        .timer-bar-fill.warning {
-            background: var(--accent-gold);
-        }
-
-        .timer-bar-fill.danger {
-            background: var(--accent-red);
-        }
-
-        /* Center Board Area */
-        .board-wrapper {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 16px;
-        }
-
-        .board-container {
-            position: relative;
-            padding: 24px;
-            background: var(--board-wood);
-            border: 6px solid var(--board-border);
-            border-radius: 12px;
-            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), inset 0 0 24px rgba(0, 0, 0, 0.8);
-        }
-
-        #gomokuCanvas {
-            display: block;
-            cursor: pointer;
-            border-radius: 4px;
-        }
-
-        .board-footer {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            width: 100%;
-            max-width: 600px;
-            padding: 8px 14px;
-            background: var(--bg-card);
-            border-radius: 10px;
-            border: 1px solid var(--border-card);
-            font-size: 0.88rem;
-        }
-
-        /* Right Panel: Chat & History */
-        .chat-messages {
-            flex: 1;
-            min-height: 240px;
-            max-height: 380px;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            padding-right: 4px;
-        }
-
-        .chat-msg {
-            padding: 8px 10px;
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.04);
-            font-size: 0.85rem;
-            line-height: 1.4;
-            border: 1px solid rgba(255, 255, 255, 0.04);
-        }
-
-        .chat-meta {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 0.75rem;
-            color: var(--text-dim);
-            margin-bottom: 3px;
-        }
-
-        .role-tag {
-            padding: 1px 6px;
-            border-radius: 4px;
-            font-size: 0.7rem;
-            font-weight: 600;
-        }
-
-        .role-tag.black { background: rgba(59, 130, 246, 0.2); color: #93c5fd; }
-        .role-tag.white { background: rgba(245, 158, 11, 0.2); color: #fde68a; }
-        .role-tag.spectator { background: rgba(156, 163, 175, 0.2); color: #d1d5db; }
-        .role-tag.system { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
-
-        .chat-input-row {
-            display: flex;
-            gap: 8px;
-        }
-
-        /* Toast notifications */
-        .toast {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            padding: 12px 20px;
-            border-radius: 10px;
-            background: #1e293b;
-            color: #fff;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-            font-size: 0.9rem;
-            z-index: 1000;
-            display: none;
-            animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            border-left: 4px solid var(--primary);
-        }
-
-        .toast.error { border-left-color: var(--accent-red); }
-        .toast.success { border-left-color: var(--accent-green); }
-
-        @keyframes slideIn {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-
-        /* Modal */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.75);
-            backdrop-filter: blur(8px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 500;
-            opacity: 0;
-            pointer-events: none;
-            transition: all 0.3s;
-        }
-
-        .modal-overlay.show {
-            opacity: 1;
-            pointer-events: auto;
-        }
-
-        .modal {
-            background: var(--bg-surface);
-            border: 1px solid var(--border-card);
-            border-radius: 20px;
-            padding: 32px;
-            width: 90%;
-            max-width: 440px;
-            text-align: center;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
-            transform: scale(0.9);
-            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-
-        .modal-overlay.show .modal {
-            transform: scale(1);
-        }
-
-        .modal-title {
-            font-size: 1.5rem;
-            font-weight: 700;
-            margin-bottom: 12px;
-        }
-
-        .modal-desc {
-            font-size: 0.95rem;
-            color: var(--text-muted);
-            margin-bottom: 24px;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>五子棋 · 在线对弈</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+<style>
+:root{--bg:#0b1220;--panel:#131d2e;--panel2:#19263a;--line:#2b3b52;--text:#f7f9fc;--muted:#9badc5;--blue:#4e8cff;--green:#35c58b;--red:#ee6470;--gold:#e6a84e;--wood:#d7aa69;--woodline:#644621}
+*{box-sizing:border-box}[hidden]{display:none!important}html,body{margin:0;min-height:100%;font-family:Inter,"Segoe UI",sans-serif;background:radial-gradient(circle at 50% 0,#182d51 0,var(--bg) 52%);color:var(--text)}
+button,input,select{font:inherit}button{border:0;cursor:pointer}.topbar{height:68px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #ffffff12;background:#09111ed9;backdrop-filter:blur(14px);position:sticky;top:0;z-index:20}
+.brand{display:flex;align-items:center;gap:11px;font-weight:750}.logo{width:38px;height:38px;display:grid;place-items:center;border-radius:12px;background:linear-gradient(135deg,#4e8cff,#8258ef);box-shadow:0 8px 28px #4e8cff44}.connection{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px}.dot{width:9px;height:9px;border-radius:50%;background:var(--red)}.dot.on{background:var(--green);box-shadow:0 0 12px var(--green)}
+.desktop-layout{max-width:1520px;margin:auto;padding:20px;display:grid;grid-template-columns:290px minmax(480px,1fr) 330px;gap:18px}.panel{background:#131d2ee8;border:1px solid #ffffff13;border-radius:18px;padding:17px;box-shadow:0 16px 44px #0004}.stack{display:flex;flex-direction:column;gap:14px}.section-title{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.badge{padding:4px 9px;border-radius:99px;background:#4e8cff1f;color:#8fb6ff;letter-spacing:0}
+.player{display:flex;align-items:center;gap:11px;padding:12px;border-radius:13px;background:#ffffff08;border:1px solid #ffffff0d}.player.active{border-color:var(--blue);box-shadow:0 0 18px #4e8cff2c}.stone{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:11px}.black{background:#111827;color:white;box-shadow:inset 4px 4px 7px #ffffff23}.white{background:#eef3fb;color:#172033}.name{font-weight:700}.meta{font-size:12px;color:var(--muted);margin-top:3px}
+.timer-head,.row{display:flex;align-items:center;justify-content:space-between;gap:9px}.timer-track{height:7px;background:#ffffff12;border-radius:5px;overflow:hidden}.timer-fill{height:100%;width:0;background:var(--blue);transition:width .2s linear}.field{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 11px;background:#0a1322;color:var(--text);outline:none}.field:focus{border-color:var(--blue)}.btn{padding:10px 14px;border-radius:10px;font-weight:700;color:white;background:var(--blue)}.btn.secondary{background:#ffffff10;border:1px solid #ffffff17}.btn.danger{background:#ee647021;color:#ff9ca4;border:1px solid #ee647059}.btn:disabled{opacity:.42;cursor:not-allowed}.hint{font-size:12px;line-height:1.5;color:var(--muted)}
+.board-page{min-width:0;display:flex;flex-direction:column;align-items:center;gap:14px}.board-shell{width:min(100%,650px);aspect-ratio:1;padding:clamp(8px,2.4vw,22px);border:5px solid #5d4025;border-radius:15px;background:#8b6238;box-shadow:0 22px 55px #0008;display:grid;place-items:center}canvas{display:block;width:100%;height:100%;background:var(--wood);border-radius:5px;touch-action:manipulation}.board-status{width:min(100%,650px);display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;border-radius:12px;background:#131d2ee8;border:1px solid #ffffff12;font-size:13px}.mobile-actions{display:none;width:100%;gap:8px}.mobile-actions .btn{flex:1}
+.chat-panel{min-height:640px}.chat-list{height:390px;overflow:auto;display:flex;flex-direction:column;gap:8px;padding-right:3px}.message{padding:9px 10px;background:#ffffff08;border-radius:11px;font-size:14px;line-height:1.4}.message-head{display:flex;gap:7px;margin-bottom:4px;color:var(--muted);font-size:11px}.role{color:#8fb6ff}.chat-lock{padding:12px;border:1px dashed #ffffff22;border-radius:12px;background:#ffffff05}.online-list{display:flex;flex-wrap:wrap;gap:7px}.online-user{padding:5px 9px;border-radius:99px;background:#35c58b18;color:#7be0b8;font-size:12px}.online-user:before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);margin-right:6px}
+.mobile-nav{display:none}.modal-bg{position:fixed;inset:0;background:#020711cc;display:none;place-items:center;padding:20px;z-index:50}.modal-bg.show{display:grid}.modal{width:min(420px,100%);padding:25px;border-radius:20px;background:var(--panel);border:1px solid #ffffff1c;box-shadow:0 30px 80px #000a}.modal h2{margin:0 0 9px}.modal p{color:var(--muted);line-height:1.5}.toast{position:fixed;right:20px;bottom:20px;max-width:360px;padding:12px 16px;border-radius:12px;background:#21314a;border-left:4px solid var(--blue);box-shadow:0 15px 40px #0008;display:none;z-index:80}.toast.error{border-color:var(--red)}
+@media(max-width:1250px) and (min-width:701px){.desktop-layout{grid-template-columns:260px 1fr}.chat-panel{grid-column:1/-1;min-height:auto}.chat-list{height:260px}}
+@media(max-width:700px){
+ body{overflow:hidden}.topbar{height:58px;padding:0 14px}.brand span:last-child{font-size:15px}.connection{font-size:12px}
+ .desktop-layout{display:flex;width:200vw;height:calc(100dvh - 58px);max-width:none;margin:0;padding:0;gap:0;transition:transform .28s ease}.desktop-layout.show-chat{transform:translateX(-100vw)}
+ .side-panel{display:none}.board-page,.chat-panel{width:100vw;min-width:100vw;height:calc(100dvh - 58px);padding:12px 12px 72px;overflow:auto}
+ .board-page{justify-content:flex-start}.board-shell{width:min(calc(100vw - 24px),calc(100dvh - 235px));min-width:280px}.board-status{font-size:12px}.mobile-actions{display:flex}
+ .chat-panel{border:0;border-radius:0;min-height:0;background:transparent;box-shadow:none}.chat-list{height:auto;min-height:260px;flex:1}
+ .mobile-nav{position:fixed;display:grid;grid-template-columns:1fr 1fr;left:12px;right:12px;bottom:max(10px,env(safe-area-inset-bottom));height:50px;background:#101b2df2;border:1px solid #ffffff17;border-radius:14px;padding:5px;z-index:25}.mobile-nav button{border-radius:10px;color:var(--muted);background:transparent;font-weight:700}.mobile-nav button.active{background:var(--blue);color:white}
+ .toast{left:14px;right:14px;bottom:72px}
+}
+</style>
 </head>
 <body>
-
-    <header>
-        <div class="brand">
-            <div class="brand-logo">五</div>
-            <div>
-                <div class="brand-title">GOMOKU ARENA</div>
-                <div style="font-size: 0.72rem; color: var(--text-dim); letter-spacing: 0.05em;">PORT: 8081 | STOMP WS</div>
-            </div>
-        </div>
-
-        <div class="auth-presets">
-            <span style="font-size: 0.8rem; color: var(--text-muted);">快速身份:</span>
-            <button class="btn-preset active" id="btnAlice" onclick="selectUser('Alice')">Alice (黑方)</button>
-            <button class="btn-preset" id="btnBob" onclick="selectUser('Bob')">Bob (白方)</button>
-            <button class="btn-preset" id="btnCharlie" onclick="selectUser('Charlie')">Charlie (观战)</button>
-            <button class="btn-preset" id="btnGuest" onclick="selectGuest()">随机访客</button>
-        </div>
-
-        <div class="header-actions">
-            <div class="status-pill">
-                <div class="status-dot" id="wsDot"></div>
-                <span id="wsStatusText">未连接</span>
-            </div>
-            <button class="btn-primary" id="btnConnect" onclick="toggleConnect()">连接服务</button>
-        </div>
-    </header>
-
-    <main>
-        <!-- Left Panel: Match & Room Controls -->
-        <div class="card">
-            <div class="card-header">
-                <span>房间与对局管理</span>
-                <span id="stateVerBadge" style="font-family: monospace; font-size: 0.75rem; color: var(--primary);">VER: 0</span>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label" for="roomIdInput">房间编号 (Room ID)</label>
-                <div style="display: flex; gap: 8px;">
-                    <input type="text" id="roomIdInput" class="form-input" value="R101">
-                    <button class="btn-secondary" onclick="joinCurrentRoom()">加入房间</button>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">对局席位状态</label>
-                <!-- Player Black -->
-                <div class="player-box" id="pBlackBox">
-                    <div class="stone-badge black">黑</div>
-                    <div class="player-details">
-                        <div class="player-name" id="pBlackName">等待入座...</div>
-                        <div class="player-meta" id="pBlackMeta">先手执黑</div>
-                    </div>
-                </div>
-
-                <!-- Player White -->
-                <div class="player-box" id="pWhiteBox" style="margin-top: 8px;">
-                    <div class="stone-badge white">白</div>
-                    <div class="player-details">
-                        <div class="player-name" id="pWhiteName">等待入座...</div>
-                        <div class="player-meta" id="pWhiteMeta">后手执白</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Timer Dashboard -->
-            <div class="form-group timer-container">
-                <div style="display: flex; justify-content: space-between; font-size: 0.82rem; margin-bottom: 4px;">
-                    <span id="turnIndicator" style="font-weight: 600;">当前状态: 等待对局开始</span>
-                    <span id="timerText" style="font-family: monospace; font-weight: 700; color: var(--accent-gold);">--s</span>
-                </div>
-                <div class="timer-bar-bg">
-                    <div class="timer-bar-fill" id="timerBar" style="width: 100%;"></div>
-                </div>
-            </div>
-
-            <!-- PvE AI Controls -->
-            <div class="form-group" style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px;">
-                <label class="form-label">人机对战模式 (PvE)</label>
-                <div style="display: flex; gap: 8px;">
-                    <select id="aiDiffSelect" class="form-input" style="flex: 1; cursor: pointer;">
-                        <option value="EASY">入门级 (Easy - 深度2)</option>
-                        <option value="MEDIUM" selected>进阶级 (Medium - 深度3)</option>
-                        <option value="HARD">大师级 (Hard - 深度4)</option>
-                    </select>
-                    <button class="btn-secondary" id="btnAiSwitch" onclick="triggerAiSwitch()">切换AI</button>
-                </div>
-            </div>
-
-            <div style="margin-top: auto; display: flex; gap: 8px;">
-                <button class="btn-danger" style="flex: 1;" onclick="surrender()">认输结算</button>
-            </div>
-        </div>
-
-        <!-- Center Panel: Canvas Board -->
-        <div class="board-wrapper">
-            <div class="board-container">
-                <canvas id="gomokuCanvas" width="580" height="580"></canvas>
-            </div>
-
-            <div class="board-footer">
-                <div>当前坐标: <span id="hoverCoord" style="font-family: monospace; color: var(--primary);">--</span></div>
-                <div>已落子数: <span id="stoneCount" style="font-family: monospace; font-weight: 700;">0</span> / 225</div>
-                <div>规则模式: <span style="color: var(--accent-gold); font-weight: 600;">无禁手自由规则</span></div>
-            </div>
-        </div>
-
-        <!-- Right Panel: Live Chat & Event Log -->
-        <div class="card">
-            <div class="card-header">
-                <span>对战聊天室</span>
-                <span style="font-size: 0.75rem; color: var(--text-dim);">限流 2条/秒</span>
-            </div>
-
-            <div class="chat-messages" id="chatList">
-                <div class="chat-msg">
-                    <div class="chat-meta">
-                        <span class="role-tag system">系统提示</span>
-                        <span>刚刚</span>
-                    </div>
-                    <div>欢迎来到五子棋对弈平台！加入房间后即可开始对局或聊天。</div>
-                </div>
-            </div>
-
-            <div class="chat-input-row">
-                <input type="text" id="chatInput" class="form-input" placeholder="输入消息 (最多200字)..." maxlength="200" onkeydown="if(event.key==='Enter') sendChat()">
-                <button class="btn-primary" onclick="sendChat()">发送</button>
-            </div>
-        </div>
-    </main>
-
-    <!-- Game Over Modal -->
-    <div class="modal-overlay" id="finishModal">
-        <div class="modal">
-            <div class="modal-title" id="finishTitle">🎉 对局结束</div>
-            <div class="modal-desc" id="finishDesc">黑方五连连珠，判定胜出！</div>
-            <button class="btn-primary" style="width: 100%;" onclick="closeModal()">确认并复盘</button>
-        </div>
-    </div>
-
-    <!-- Toast -->
-    <div class="toast" id="toast"></div>
-
-    <script>
-        // State
-        let stompClient = null;
-        let isConnected = false;
-        let currentUser = { userId: "U-alice", username: "Alice", isGuest: false };
-        let currentToken = "";
-        let currentRoomId = "R101";
-
-        let gameState = {
-            status: "WAITING",
-            stateVersion: 0,
-            currentTurn: null,
-            turnDeadline: 0,
-            occupiedCount: 0,
-            board: Array(15).fill(null).map(() => Array(15).fill(0)),
-            playerBlack: null,
-            playerWhite: null,
-            lastMove: null,
-            winningLine: null
-        };
-
-        // Canvas Setup
-        const canvas = document.getElementById("gomokuCanvas");
-        const ctx = canvas.getContext("2d");
-        const BOARD_SIZE = 15;
-        const PADDING = 30;
-        const CELL_SIZE = (canvas.width - PADDING * 2) / (BOARD_SIZE - 1);
-
-        let hoverPos = null;
-        let timerInterval = null;
-
-        // Initialize
-        window.addEventListener("load", () => {
-            initAuthToken("Alice");
-            renderBoard();
-        });
-
-        async function initAuthToken(username) {
-            try {
-                const res = await fetch(`/api/auth/token?username=${encodeURIComponent(username)}`);
-                const data = await res.json();
-                currentToken = data.token;
-                currentUser = { userId: data.userId, username: data.username, isGuest: false };
-                showToast(`已加载凭据: ${username}`, "success");
-            } catch (e) {
-                console.error("Auth fetch failed", e);
-            }
-        }
-
-        async function selectUser(name) {
-            document.querySelectorAll(".btn-preset").forEach(b => b.classList.remove("active"));
-            if (name === 'Alice') document.getElementById("btnAlice").classList.add("active");
-            if (name === 'Bob') document.getElementById("btnBob").classList.add("active");
-            if (name === 'Charlie') document.getElementById("btnCharlie").classList.add("active");
-            await initAuthToken(name);
-            if (isConnected) {
-                disconnectWs();
-                setTimeout(connectWs, 300);
-            }
-        }
-
-        async function selectGuest() {
-            document.querySelectorAll(".btn-preset").forEach(b => b.classList.remove("active"));
-            document.getElementById("btnGuest").classList.add("active");
-            try {
-                const res = await fetch('/api/auth/guest');
-                const data = await res.json();
-                currentToken = data.token;
-                currentUser = { userId: data.userId, username: data.username, isGuest: true };
-                showToast(`已生成访客身份: ${data.username}`, "success");
-                if (isConnected) {
-                    disconnectWs();
-                    setTimeout(connectWs, 300);
-                }
-            } catch (e) {
-                console.error("Guest auth failed", e);
-            }
-        }
-
-        function toggleConnect() {
-            if (isConnected) {
-                disconnectWs();
-            } else {
-                connectWs();
-            }
-        }
-
-        let activeRoomSubscriptions = [];
-
-        function subscribeToRoom(roomId) {
-            // 取消先前的房间主题订阅
-            activeRoomSubscriptions.forEach(sub => {
-                try { sub.unsubscribe(); } catch (e) {}
-            });
-            activeRoomSubscriptions = [];
-
-            activeRoomSubscriptions.push(stompClient.subscribe(`/topic/room/${roomId}/state`, onRoomStateMessage));
-            activeRoomSubscriptions.push(stompClient.subscribe(`/topic/room/${roomId}/gameplay`, onGameplayMessage));
-            activeRoomSubscriptions.push(stompClient.subscribe(`/topic/room/${roomId}/chat`, onChatMessage));
-            console.log("Successfully subscribed to room topics:", roomId);
-        }
-
-        async function connectWs() {
-            if (!currentToken) {
-                await initAuthToken(currentUser.username || "Alice");
-            }
-
-            const socket = new SockJS('/ws-gomoku');
-            stompClient = Stomp.over(socket);
-            stompClient.debug = null; // disable console spam
-
-            const headers = { 'Authorization': 'Bearer ' + currentToken };
-
-            stompClient.connect(headers, (frame) => {
-                isConnected = true;
-                updateConnStatus(true);
-                showToast("STOMP 鉴权连接成功！", "success");
-
-                // 1. 订阅用户私有通道 (无房间资格检查限制)
-                stompClient.subscribe('/user/queue/errors', onErrorMessage);
-                stompClient.subscribe('/user/queue/snapshot', (msg) => {
-                    onSnapshotMessage(msg);
-                    // 2. 收到入房快照确认入房成功后，安全订阅房间广播
-                    subscribeToRoom(currentRoomId);
-                });
-
-                // 3. 发送入房指令
-                sendJoinRoom();
-            }, (error) => {
-                isConnected = false;
-                updateConnStatus(false);
-                showToast("连接中断: " + (error.headers ? error.headers.message : error), "error");
-            });
-        }
-
-        function disconnectWs() {
-            if (stompClient) {
-                stompClient.disconnect(() => {
-                    isConnected = false;
-                    updateConnStatus(false);
-                    activeRoomSubscriptions = [];
-                    showToast("已断开连接", "success");
-                });
-            }
-        }
-
-        function updateConnStatus(connected) {
-            const dot = document.getElementById("wsDot");
-            const txt = document.getElementById("wsStatusText");
-            const btn = document.getElementById("btnConnect");
-            if (connected) {
-                dot.className = "status-dot connected";
-                txt.textContent = "已连接 (" + currentUser.username + ")";
-                btn.textContent = "断开连接";
-                btn.className = "btn-secondary";
-            } else {
-                dot.className = "status-dot disconnected";
-                txt.textContent = "未连接";
-                btn.textContent = "连接服务";
-                btn.className = "btn-primary";
-            }
-        }
-
-        function joinCurrentRoom() {
-            const roomId = document.getElementById("roomIdInput").value.trim() || "R101";
-            currentRoomId = roomId;
-
-            if (!isConnected) {
-                connectWs();
-                return;
-            }
-
-            sendJoinRoom();
-        }
-
-        function sendJoinRoom() {
-            const roomId = document.getElementById("roomIdInput").value.trim() || "R101";
-            currentRoomId = roomId;
-
-            stompClient.send('/app/room.join', {}, JSON.stringify({
-                commandId: "join-" + Date.now(),
-                roomId: roomId
-            }));
-
-            // 150ms 兜底订阅
-            setTimeout(() => {
-                if (isConnected && activeRoomSubscriptions.length === 0) {
-                    subscribeToRoom(currentRoomId);
-                }
-            }, 150);
-        }
-
-        function onRoomStateMessage(message) {
-            const data = JSON.parse(message.body);
-            gameState.status = data.status;
-            gameState.stateVersion = data.stateVersion;
-            gameState.currentTurn = data.currentTurn;
-            gameState.turnDeadline = data.turnDeadline;
-            gameState.occupiedCount = data.occupiedCount;
-            gameState.playerBlack = data.playerBlack;
-            gameState.playerWhite = data.playerWhite;
-
-            updateUiDashboard();
-            renderBoard();
-        }
-
-        function onGameplayMessage(message) {
-            const data = JSON.parse(message.body);
-            if (data.type === "MOVE_COMMITTED") {
-                gameState.board[data.row][data.col] = (data.color === "BLACK" ? 1 : 2);
-                gameState.occupiedCount = data.stepNumber;
-                gameState.stateVersion = data.stateVersion;
-                gameState.currentTurn = data.nextTurn;
-                gameState.turnDeadline = data.turnDeadline;
-                gameState.lastMove = { row: data.row, col: data.col, color: data.color };
-
-                if (data.isGameOver) {
-                    gameState.status = "FINISHED";
-                    showGameOverModal(data.winner, data.finishReason);
-                }
-
-                updateUiDashboard();
-                renderBoard();
-            } else if (data.type === "GAME_FINISHED") {
-                gameState.status = "FINISHED";
-                gameState.stateVersion = data.stateVersion;
-                gameState.winningLine = data.winningLine;
-                showGameOverModal(data.winner, data.finishReason);
-                updateUiDashboard();
-                renderBoard();
-            }
-        }
-
-        function onSnapshotMessage(message) {
-            const data = JSON.parse(message.body);
-            gameState.status = data.status;
-            gameState.stateVersion = data.stateVersion;
-            gameState.currentTurn = data.currentTurn;
-            gameState.turnDeadline = data.turnDeadline;
-            gameState.occupiedCount = data.occupiedCount;
-            gameState.playerBlack = data.playerBlack;
-            gameState.playerWhite = data.playerWhite;
-            gameState.board = data.board;
-
-            if (data.recentMoves && data.recentMoves.length > 0) {
-                const last = data.recentMoves[data.recentMoves.length - 1];
-                gameState.lastMove = { row: last.row, col: last.col, color: last.color };
-            }
-
-            // Restore recent chats
-            if (data.recentChats) {
-                data.recentChats.forEach(appendChatBubble);
-            }
-
-            showToast("全量对局快照渲染完成", "success");
-            updateUiDashboard();
-            renderBoard();
-        }
-
-        function onErrorMessage(message) {
-            const err = JSON.parse(message.body);
-            showToast(`[${err.errorCode}] ${err.errorMessage}`, "error");
-        }
-
-        function onChatMessage(message) {
-            const msg = JSON.parse(message.body);
-            appendChatBubble(msg);
-        }
-
-        function appendChatBubble(msg) {
-            const chatList = document.getElementById("chatList");
-            const div = document.createElement("div");
-            div.className = "chat-msg";
-
-            let roleClass = "spectator";
-            let roleName = "观战者";
-            if (msg.role === "PLAYER_BLACK") { roleClass = "black"; roleName = "黑方"; }
-            if (msg.role === "PLAYER_WHITE") { roleClass = "white"; roleName = "白方"; }
-
-            div.innerHTML = `
-                <div class="chat-meta">
-                    <span class="role-tag ${roleClass}">${roleName}</span>
-                    <span style="font-weight: 600;">${escapeHtml(msg.senderName)}</span>
-                    <span style="margin-left: auto;">${new Date(msg.timestamp).toLocaleTimeString()}</span>
-                </div>
-                <div>${escapeHtml(msg.content)}</div>
-            `;
-            chatList.appendChild(div);
-            chatList.scrollTop = chatList.scrollHeight;
-        }
-
-        function sendChat() {
-            const input = document.getElementById("chatInput");
-            const text = input.value.trim();
-            if (!text || !isConnected) return;
-
-            stompClient.send('/app/chat.send', {}, JSON.stringify({
-                commandId: "chat-" + Date.now(),
-                roomId: currentRoomId,
-                content: text
-            }));
-            input.value = "";
-        }
-
-        function triggerAiSwitch() {
-            if (!isConnected) return;
-            const diff = document.getElementById("aiDiffSelect").value;
-            stompClient.send('/app/game.ai_switch', {}, JSON.stringify({
-                commandId: "ai-" + Date.now(),
-                roomId: currentRoomId,
-                difficulty: diff
-            }));
-            showToast("已请求开启人机对战模式: " + diff, "success");
-        }
-
-        function surrender() {
-            if (!isConnected || gameState.status !== "PLAYING") return;
-            if (!confirm("确定要在当前对局认输吗？")) return;
-            stompClient.send('/app/game.surrender', {}, JSON.stringify({
-                commandId: "surr-" + Date.now(),
-                roomId: currentRoomId
-            }));
-        }
-
-        function updateUiDashboard() {
-            document.getElementById("stateVerBadge").textContent = `VER: ${gameState.stateVersion}`;
-            document.getElementById("stoneCount").textContent = gameState.occupiedCount;
-
-            // Player Black
-            const pb = gameState.playerBlack;
-            document.getElementById("pBlackName").textContent = pb ? pb.username : "等待入座...";
-            document.getElementById("pBlackMeta").textContent = pb ? `ID: ${pb.userId}` : "首位进入者先手";
-
-            // Player White
-            const pw = gameState.playerWhite;
-            document.getElementById("pWhiteName").textContent = pw ? pw.username : "等待入座...";
-            document.getElementById("pWhiteMeta").textContent = pw ? `ID: ${pw.userId}` : "次位进入者后手";
-
-            // Turn Highlight Box
-            const bBox = document.getElementById("pBlackBox");
-            const wBox = document.getElementById("pWhiteBox");
-            bBox.classList.remove("active-turn");
-            wBox.classList.remove("active-turn");
-
-            const turnText = document.getElementById("turnIndicator");
-            if (gameState.status === "PLAYING") {
-                if (gameState.currentTurn === "BLACK") {
-                    bBox.classList.add("active-turn");
-                    turnText.textContent = "当前轮次: 黑方行棋 ●";
-                    turnText.style.color = "#93c5fd";
-                } else {
-                    wBox.classList.add("active-turn");
-                    turnText.textContent = "当前轮次: 白方行棋 ○";
-                    turnText.style.color = "#fde68a";
-                }
-                startCountdownTimer();
-            } else if (gameState.status === "PAUSED") {
-                turnText.textContent = "对局挂起 (选手掉线重连中...)";
-                turnText.style.color = "var(--accent-gold)";
-                startCountdownTimer();
-            } else if (gameState.status === "FINISHED") {
-                turnText.textContent = "对局已终局";
-                turnText.style.color = "var(--text-dim)";
-                stopCountdownTimer();
-            } else {
-                turnText.textContent = "等待选手准备...";
-                turnText.style.color = "var(--text-muted)";
-                stopCountdownTimer();
-            }
-        }
-
-        function startCountdownTimer() {
-            if (timerInterval) clearInterval(timerInterval);
-            timerInterval = setInterval(() => {
-                const now = Date.now();
-                const diff = Math.max(0, Math.ceil((gameState.turnDeadline - now) / 1000));
-                const total = 30;
-                const pct = Math.min(100, Math.max(0, (diff / total) * 100));
-
-                const bar = document.getElementById("timerBar");
-                const txt = document.getElementById("timerText");
-                bar.style.width = pct + "%";
-                txt.textContent = diff + "s";
-
-                bar.className = "timer-bar-fill";
-                if (diff <= 5) bar.classList.add("danger");
-                else if (diff <= 10) bar.classList.add("warning");
-
-                if (diff <= 0 && gameState.status === "PLAYING") {
-                    clearInterval(timerInterval);
-                }
-            }, 200);
-        }
-
-        function stopCountdownTimer() {
-            if (timerInterval) clearInterval(timerInterval);
-            document.getElementById("timerBar").style.width = "0%";
-            document.getElementById("timerText").textContent = "--s";
-        }
-
-        // Canvas Rendering & Interactions
-        function renderBoard() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Wood Texture Background
-            ctx.fillStyle = "#cca269";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Grid Lines
-            ctx.strokeStyle = "#5c4028";
-            ctx.lineWidth = 1;
-
-            for (let i = 0; i < BOARD_SIZE; i++) {
-                const pos = PADDING + i * CELL_SIZE;
-                // Horizontal
-                ctx.beginPath();
-                ctx.moveTo(PADDING, pos);
-                ctx.lineTo(canvas.width - PADDING, pos);
-                ctx.stroke();
-                // Vertical
-                ctx.beginPath();
-                ctx.moveTo(pos, PADDING);
-                ctx.lineTo(pos, canvas.height - PADDING);
-                ctx.stroke();
-            }
-
-            // Star Points (天元与星位)
-            const starCoords = [3, 7, 11];
-            ctx.fillStyle = "#5c4028";
-            for (let r of starCoords) {
-                for (let c of starCoords) {
-                    ctx.beginPath();
-                    ctx.arc(PADDING + c * CELL_SIZE, PADDING + r * CELL_SIZE, 3.5, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            }
-
-            // Stones
-            for (let r = 0; r < BOARD_SIZE; r++) {
-                for (let c = 0; c < BOARD_SIZE; c++) {
-                    const val = gameState.board[r][c];
-                    if (val !== 0) {
-                        drawStone(r, c, val === 1 ? "BLACK" : "WHITE");
-                    }
-                }
-            }
-
-            // Last Move Indicator
-            if (gameState.lastMove) {
-                const lx = PADDING + gameState.lastMove.col * CELL_SIZE;
-                const ly = PADDING + gameState.lastMove.row * CELL_SIZE;
-                ctx.beginPath();
-                ctx.arc(lx, ly, 4, 0, Math.PI * 2);
-                ctx.fillStyle = "#ef4444";
-                ctx.fill();
-            }
-
-            // Ghost Stone on Hover
-            if (hoverPos && gameState.status === "PLAYING") {
-                const [hr, hc] = hoverPos;
-                if (gameState.board[hr][hc] === 0) {
-                    const hx = PADDING + hc * CELL_SIZE;
-                    const hy = PADDING + hr * CELL_SIZE;
-                    ctx.beginPath();
-                    ctx.arc(hx, hy, CELL_SIZE * 0.42, 0, Math.PI * 2);
-                    ctx.fillStyle = (gameState.currentTurn === "BLACK")
-                        ? "rgba(17, 24, 39, 0.4)"
-                        : "rgba(255, 255, 255, 0.5)";
-                    ctx.fill();
-                }
-            }
-        }
-
-        function drawStone(row, col, color) {
-            const x = PADDING + col * CELL_SIZE;
-            const y = PADDING + row * CELL_SIZE;
-            const radius = CELL_SIZE * 0.44;
-
-            // Shadow
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(x + 2, y + 3, radius, 0, Math.PI * 2);
-            ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
-            ctx.fill();
-            ctx.restore();
-
-            // Gradient
-            ctx.beginPath();
-            ctx.arc(x, y, radius, 0, Math.PI * 2);
-            const grad = ctx.createRadialGradient(
-                x - radius * 0.3, y - radius * 0.3, radius * 0.1,
-                x, y, radius
-            );
-
-            if (color === "BLACK") {
-                grad.addColorStop(0, "#555555");
-                grad.addColorStop(0.7, "#1a1a1a");
-                grad.addColorStop(1, "#0a0a0a");
-            } else {
-                grad.addColorStop(0, "#ffffff");
-                grad.addColorStop(0.85, "#e2e8f0");
-                grad.addColorStop(1, "#94a3b8");
-            }
-            ctx.fillStyle = grad;
-            ctx.fill();
-        }
-
-        // Canvas Click -> Move
-        canvas.addEventListener("click", (e) => {
-            if (!isConnected || gameState.status !== "PLAYING") return;
-
-            const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-
-            const col = Math.round((x - PADDING) / CELL_SIZE);
-            const row = Math.round((y - PADDING) / CELL_SIZE);
-
-            if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE) return;
-            if (gameState.board[row][col] !== 0) {
-                showToast("该位置已有落子！", "error");
-                return;
-            }
-
-            // Send Move
-            stompClient.send('/app/game.move', {}, JSON.stringify({
-                commandId: "move-" + Date.now(),
-                roomId: currentRoomId,
-                expectedStateVersion: gameState.stateVersion,
-                row: row,
-                col: col
-            }));
-        });
-
-        canvas.addEventListener("mousemove", (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-
-            const col = Math.round((x - PADDING) / CELL_SIZE);
-            const row = Math.round((y - PADDING) / CELL_SIZE);
-
-            if (row >= 0 && row < BOARD_SIZE && col >= 0 && col < BOARD_SIZE) {
-                hoverPos = [row, col];
-                const letters = "ABCDEFGHIJKLMNO";
-                document.getElementById("hoverCoord").textContent = `${letters[col]}${15 - row} (${row}, ${col})`;
-            } else {
-                hoverPos = null;
-                document.getElementById("hoverCoord").textContent = "--";
-            }
-            renderBoard();
-        });
-
-        canvas.addEventListener("mouseleave", () => {
-            hoverPos = null;
-            document.getElementById("hoverCoord").textContent = "--";
-            renderBoard();
-        });
-
-        function showGameOverModal(winner, reason) {
-            const modal = document.getElementById("finishModal");
-            const title = document.getElementById("finishTitle");
-            const desc = document.getElementById("finishDesc");
-
-            let winnerText = winner === "BLACK" ? "黑方获胜" : (winner === "WHITE" ? "白方获胜" : "对局平局");
-            let reasonText = "";
-            if (reason === "FIVE_IN_A_ROW") reasonText = "达成五连连珠制胜！";
-            if (reason === "SURRENDER") reasonText = "对方主动认输！";
-            if (reason === "TURN_TIMEOUT") reasonText = "对方落子倒计时超时！";
-            if (reason === "DISCONNECT_TIMEOUT") reasonText = "对方掉线未在45秒内重连！";
-            if (reason === "DRAW") reasonText = "棋盘已满且无五连，判定平局！";
-
-            title.textContent = "🏆 " + winnerText;
-            desc.textContent = reasonText;
-            modal.classList.add("show");
-        }
-
-        function closeModal() {
-            document.getElementById("finishModal").classList.remove("show");
-        }
-
-        function showToast(msg, type) {
-            const toast = document.getElementById("toast");
-            toast.textContent = msg;
-            toast.className = "toast " + (type || "");
-            toast.style.display = "block";
-            setTimeout(() => { toast.style.display = "none"; }, 3500);
-        }
-
-        function escapeHtml(str) {
-            if (!str) return "";
-            return String(str)
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
-        }
-    </script>
+<header class="topbar">
+ <div class="brand"><div class="logo">五</div><span>在线五子棋</span></div>
+ <div class="connection"><i id="wsDot" class="dot"></i><span id="wsText">连接中</span></div>
+</header>
+<main id="appRail" class="desktop-layout">
+ <aside class="panel stack side-panel">
+  <div class="section-title"><span>默认对局</span><span id="version" class="badge">v0</span></div>
+  <div id="blackBox" class="player"><div class="stone black">黑</div><div><div id="blackName" class="name">等待入座</div><div class="meta">先手</div></div></div>
+  <div id="whiteBox" class="player"><div class="stone white">白</div><div><div id="whiteName" class="name">等待入座</div><div class="meta">后手</div></div></div>
+  <div class="stack">
+   <div class="timer-head"><span id="turnText">等待对局开始</span><b id="timerText">--</b></div>
+   <div class="timer-track"><div id="timerBar" class="timer-fill"></div></div>
+  </div>
+  <div class="section-title"><span>思考时间</span></div>
+  <div class="row"><select id="timeMode" class="field" onchange="toggleCustomTime()"><option value="0">不限时</option><option value="30" selected>30 秒</option><option value="60">60 秒</option><option value="custom">自定义</option></select><input id="customTime" class="field" type="number" min="5" max="3600" value="90" hidden></div>
+  <button class="btn secondary" onclick="saveTimeSetting()">保存时间设置</button>
+  <button id="seatBtn" class="btn" onclick="takeSeat()">加入对局</button>
+  <button id="surrenderBtn" class="btn danger" onclick="openSurrender()" disabled>认输</button>
+  <button id="restartBtn" class="btn secondary" onclick="restartGame()" hidden>重新开局</button>
+  <p class="hint">所有人进入后即可观战并查看在线名单。加入对局或聊天前，只需输入用户名，无需密码。</p>
+ </aside>
+ <section class="board-page">
+  <div class="board-shell"><canvas id="board" width="600" height="600" aria-label="十五路五子棋棋盘"></canvas></div>
+  <div class="board-status"><span id="mobileTurn">等待对局开始</span><span><b id="stoneCount">0</b> / 225</span><span id="mobileTimer">不限时</span></div>
+  <div class="mobile-actions"><button id="mobileSeatBtn" class="btn" onclick="takeSeat()">加入对局</button><button id="mobileSurrenderBtn" class="btn danger" onclick="openSurrender()">认输</button><button id="mobileRestartBtn" class="btn secondary" onclick="restartGame()" hidden>再来一局</button></div>
+  <div class="hint">手机端向左滑动查看聊天与在线用户</div>
+ </section>
+ <aside class="panel stack chat-panel">
+  <div class="section-title"><span>聊天</span><span id="onlineCount" class="badge">0 人在线</span></div>
+  <div id="onlineList" class="online-list"></div>
+  <div id="chatList" class="chat-list"><div class="message"><div class="message-head"><span class="role">系统</span></div>欢迎观战。输入用户名后即可发言。</div></div>
+  <div id="nameGate" class="chat-lock stack">
+   <div class="hint">输入用户名启用聊天（无需密码）</div>
+   <div class="row"><input id="username" class="field" maxlength="24" placeholder="你的用户名"><button class="btn" onclick="enableChat()">进入</button></div>
+  </div>
+  <div id="chatComposer" class="row" hidden><input id="chatInput" class="field" maxlength="200" placeholder="说点什么…" onkeydown="if(event.key==='Enter')sendChat()"><button class="btn" onclick="sendChat()">发送</button></div>
+ </aside>
+</main>
+<nav class="mobile-nav"><button id="navBoard" class="active" onclick="showMobilePage(false)">棋盘</button><button id="navChat" onclick="showMobilePage(true)">聊天</button></nav>
+<div id="confirmModal" class="modal-bg"><div class="modal"><h2>确认认输？</h2><p>认输后本局将立即结束，对方获胜。</p><div class="row"><button class="btn secondary" onclick="closeModal('confirmModal')">继续下棋</button><button class="btn danger" onclick="confirmSurrender()">确认认输</button></div></div></div>
+<div id="finishModal" class="modal-bg"><div class="modal"><h2 id="finishTitle">对局结束</h2><p id="finishReason"></p><div class="row"><button class="btn secondary" onclick="closeModal('finishModal')">查看棋盘</button><button id="finishRestartBtn" class="btn" onclick="restartGame()">重新开局</button></div></div></div>
+<div id="toast" class="toast"></div>
+<script>
+const ROOM_ID="MAIN";
+const BOARD_SIZE=15,PADDING=30,CELL=(600-PADDING*2)/(BOARD_SIZE-1);
+let stomp=null,connected=false,token="",user={userId:"",username:"访客",isGuest:true},subscriptions=[],timerHandle=null,hover=null;
+let state={status:"WAITING",stateVersion:0,currentTurn:null,turnDeadline:0,turnTimeSeconds:30,occupiedCount:0,board:Array.from({length:15},()=>Array(15).fill(0)),playerBlack:null,playerWhite:null,onlineUsers:[],lastMove:null};
+const canvas=document.getElementById("board"),ctx=canvas.getContext("2d");
+const mobileDevice=()=>matchMedia("(max-width:700px)").matches||/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+document.body.classList.toggle("is-mobile",mobileDevice());
+addEventListener("resize",()=>document.body.classList.toggle("is-mobile",mobileDevice()));
+addEventListener("load",async()=>{renderBoard();await becomeGuest();connect();});
+async function becomeGuest(){const r=await fetch("/api/auth/guest?prefix=Viewer");const d=await r.json();token=d.token;user={...d,isGuest:true};}
+async function enableChat(){
+ const name=document.getElementById("username").value.trim();
+ if(name.length<2){toast("用户名至少需要 2 个字符","error");return;}
+ const r=await fetch("/api/auth/token?username="+encodeURIComponent(name));if(!r.ok){toast("用户名暂时不可用","error");return;}
+ const d=await r.json();user={...d,isGuest:false};token=d.token;
+ if(stomp&&connected)stomp.disconnect(()=>{connected=false;connect();});else connect();
+ document.getElementById("nameGate").hidden=true;document.getElementById("chatComposer").hidden=false;
+}
+function connect(){
+ const socket=new SockJS("/ws-gomoku");stomp=Stomp.over(socket);stomp.debug=null;
+ stomp.connect({Authorization:"Bearer "+token},()=>{
+  connected=true;connectionUi();
+  stomp.subscribe("/user/queue/errors",m=>{const e=JSON.parse(m.body);toast(e.errorMessage||"操作失败","error")});
+  stomp.subscribe("/user/queue/snapshot",m=>{applySnapshot(JSON.parse(m.body));subscribeRoom()});
+  sendJoin(true);
+ },()=>{connected=false;connectionUi();setTimeout(connect,2500)});
+}
+function subscribeRoom(){subscriptions.forEach(s=>{try{s.unsubscribe()}catch(e){}});subscriptions=[
+ stomp.subscribe("/topic/room/"+ROOM_ID+"/state",m=>applyState(JSON.parse(m.body))),
+ stomp.subscribe("/topic/room/"+ROOM_ID+"/gameplay",m=>gameEvent(JSON.parse(m.body))),
+ stomp.subscribe("/topic/room/"+ROOM_ID+"/chat",m=>appendChat(JSON.parse(m.body)))
+];}
+function sendJoin(spectate){if(connected)stomp.send("/app/room.join",{},JSON.stringify({commandId:id("join"),roomId:ROOM_ID,spectate}));}
+function takeSeat(){if(user.isGuest){showMobilePage(true);document.getElementById("username").focus();toast("先输入用户名，再加入对局");return;}sendJoin(false);}
+function applyState(d){if(d.gameId&&d.gameId!==state.gameId&&d.occupiedCount===0){state.board=Array.from({length:15},()=>Array(15).fill(0));state.lastMove=null;closeModal("finishModal");}Object.assign(state,d);updateUi();}
+function applySnapshot(d){Object.assign(state,d);state.board=d.board||state.board;state.lastMove=d.recentMoves?.at(-1)||null;const list=document.getElementById("chatList");d.recentChats?.forEach(appendChat);updateUi();renderBoard();}
+function gameEvent(d){
+ if(d.type==="MOVE_COMMITTED"){state.board[d.row][d.col]=d.color==="BLACK"?1:2;state.occupiedCount=d.stepNumber;state.stateVersion=d.stateVersion;state.currentTurn=d.nextTurn;state.turnDeadline=d.turnDeadline;state.lastMove=d;if(d.isGameOver){state.status="FINISHED";finish(d.winner,d.finishReason)}}
+ if(d.type==="GAME_FINISHED"){state.status="FINISHED";state.stateVersion=d.stateVersion;finish(d.winner,d.finishReason)}
+ updateUi();renderBoard();
+}
+function updateUi(){
+ document.getElementById("version").textContent="v"+state.stateVersion;document.getElementById("stoneCount").textContent=state.occupiedCount||0;
+ document.getElementById("blackName").textContent=state.playerBlack?.username||"等待入座";document.getElementById("whiteName").textContent=state.playerWhite?.username||"等待入座";
+ document.getElementById("blackBox").classList.toggle("active",state.status==="PLAYING"&&state.currentTurn==="BLACK");document.getElementById("whiteBox").classList.toggle("active",state.status==="PLAYING"&&state.currentTurn==="WHITE");
+ const turn=state.status==="PLAYING"?(state.currentTurn==="BLACK"?"黑方回合":"白方回合"):state.status==="FINISHED"?"本局已结束":state.status==="PAUSED"?"等待选手重连":"等待双方入座";
+ document.getElementById("turnText").textContent=turn;document.getElementById("mobileTurn").textContent=turn;
+ const mine=user.userId===state.playerBlack?.userId||user.userId===state.playerWhite?.userId;
+ const playingMine=mine&&state.status==="PLAYING";document.getElementById("surrenderBtn").disabled=!playingMine;document.getElementById("mobileSurrenderBtn").disabled=!playingMine;
+ document.getElementById("seatBtn").disabled=mine;document.getElementById("seatBtn").textContent=mine?"已入座":"加入对局";document.getElementById("mobileSeatBtn").disabled=mine;document.getElementById("mobileSeatBtn").textContent=mine?"已入座":"加入对局";
+ const canRestart=mine&&state.status==="FINISHED";document.getElementById("restartBtn").hidden=!canRestart;document.getElementById("mobileRestartBtn").hidden=!canRestart;document.getElementById("finishRestartBtn").hidden=!canRestart;
+ const mode=document.getElementById("timeMode");if(state.turnTimeSeconds==null)mode.value="0";else if([30,60].includes(state.turnTimeSeconds))mode.value=String(state.turnTimeSeconds);else{mode.value="custom";document.getElementById("customTime").value=state.turnTimeSeconds;}toggleCustomTime();
+ const users=state.onlineUsers||[];document.getElementById("onlineCount").textContent=users.length+" 人在线";document.getElementById("onlineList").innerHTML=users.map(x=>'<span class="online-user">'+esc(x.username)+'</span>').join("")||'<span class="hint">暂无在线用户</span>';
+ syncTimer();renderBoard();
+}
+function syncTimer(){clearInterval(timerHandle);const tick=()=>{if(!state.turnTimeSeconds){document.getElementById("timerText").textContent="不限时";document.getElementById("mobileTimer").textContent="不限时";document.getElementById("timerBar").style.width="100%";return;}if(!state.turnDeadline){const label=state.turnTimeSeconds+" 秒/步";document.getElementById("timerText").textContent=label;document.getElementById("mobileTimer").textContent=label;document.getElementById("timerBar").style.width="100%";return;}const left=Math.max(0,Math.ceil((state.turnDeadline-Date.now())/1000)),pct=Math.max(0,Math.min(100,left/state.turnTimeSeconds*100));document.getElementById("timerText").textContent=left+"s";document.getElementById("mobileTimer").textContent=left+"s";document.getElementById("timerBar").style.width=pct+"%";};tick();if(state.status==="PLAYING"&&state.turnTimeSeconds)timerHandle=setInterval(tick,200);}
+function toggleCustomTime(){document.getElementById("customTime").hidden=document.getElementById("timeMode").value!=="custom";}
+function saveTimeSetting(){if(!connected)return;let v=document.getElementById("timeMode").value;if(v==="custom")v=document.getElementById("customTime").value;stomp.send("/app/game.settings",{},JSON.stringify({commandId:id("settings"),roomId:ROOM_ID,turnTimeSeconds:Number(v)}));}
+function openSurrender(){const mine=user.userId===state.playerBlack?.userId||user.userId===state.playerWhite?.userId;if(!mine||state.status!=="PLAYING"){toast("只有正在对局的棋手可以认输","error");return;}document.getElementById("confirmModal").classList.add("show");}
+function confirmSurrender(){closeModal("confirmModal");stomp.send("/app/game.surrender",{},JSON.stringify({commandId:id("surrender"),roomId:ROOM_ID}));}
+function restartGame(){closeModal("finishModal");if(connected)stomp.send("/app/game.restart",{},JSON.stringify({commandId:id("restart"),roomId:ROOM_ID}));}
+function finish(winner,reason){const titles={BLACK:"黑方获胜",WHITE:"白方获胜"},reasons={FIVE_IN_A_ROW:"五子连珠",SURRENDER:"对方认输",TURN_TIMEOUT:"对方思考超时",DISCONNECT_TIMEOUT:"对方断线超时",DRAW:"棋盘已满，平局"};document.getElementById("finishTitle").textContent=titles[winner]||"本局平局";document.getElementById("finishReason").textContent=reasons[reason]||"对局已经结束";document.getElementById("finishModal").classList.add("show");}
+function closeModal(id){document.getElementById(id).classList.remove("show");}
+function sendChat(){if(user.isGuest){toast("请先输入用户名","error");return;}const input=document.getElementById("chatInput"),content=input.value.trim();if(!content||!connected)return;stomp.send("/app/chat.send",{},JSON.stringify({commandId:id("chat"),roomId:ROOM_ID,content}));input.value="";}
+function appendChat(m){if(!m||!m.content)return;const div=document.createElement("div");div.className="message";div.innerHTML='<div class="message-head"><span class="role">'+esc(roleText(m.role))+'</span><b>'+esc(m.senderName||"")+'</b><span>'+new Date(m.timestamp).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})+'</span></div><div>'+esc(m.content)+'</div>';const list=document.getElementById("chatList");list.appendChild(div);list.scrollTop=list.scrollHeight;}
+function roleText(r){return r==="PLAYER_BLACK"?"黑方":r==="PLAYER_WHITE"?"白方":"观战";}
+function connectionUi(){document.getElementById("wsDot").classList.toggle("on",connected);document.getElementById("wsText").textContent=connected?(user.isGuest?"在线观战":user.username+" · 在线"):"重新连接中";}
+function renderBoard(){
+ ctx.fillStyle="#d7aa69";ctx.fillRect(0,0,600,600);ctx.strokeStyle="#644621";ctx.lineWidth=1.2;
+ for(let i=0;i<15;i++){const p=PADDING+i*CELL;ctx.beginPath();ctx.moveTo(PADDING,p);ctx.lineTo(570,p);ctx.stroke();ctx.beginPath();ctx.moveTo(p,PADDING);ctx.lineTo(p,570);ctx.stroke();}
+ ctx.fillStyle="#644621";[[3,3],[3,11],[7,7],[11,3],[11,11]].forEach(([r,c])=>{ctx.beginPath();ctx.arc(PADDING+c*CELL,PADDING+r*CELL,4,0,Math.PI*2);ctx.fill()});
+ for(let r=0;r<15;r++)for(let c=0;c<15;c++)if(state.board[r][c])drawStone(r,c,state.board[r][c]);
+ if(state.lastMove){ctx.fillStyle="#ef4444";ctx.beginPath();ctx.arc(PADDING+state.lastMove.col*CELL,PADDING+state.lastMove.row*CELL,4,0,Math.PI*2);ctx.fill();}
+}
+function drawStone(r,c,v){const x=PADDING+c*CELL,y=PADDING+r*CELL,rad=CELL*.43,g=ctx.createRadialGradient(x-rad*.3,y-rad*.35,2,x,y,rad);if(v===1){g.addColorStop(0,"#566070");g.addColorStop(.6,"#172033");g.addColorStop(1,"#05070a")}else{g.addColorStop(0,"#fff");g.addColorStop(.75,"#eef2f7");g.addColorStop(1,"#aab5c5")}ctx.shadowColor="#0008";ctx.shadowBlur=6;ctx.shadowOffsetY=3;ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,rad,0,Math.PI*2);ctx.fill();ctx.shadowColor="transparent";}
+canvas.addEventListener("click",e=>{if(!connected||state.status!=="PLAYING")return;const rect=canvas.getBoundingClientRect(),x=(e.clientX-rect.left)*600/rect.width,y=(e.clientY-rect.top)*600/rect.height,c=Math.round((x-PADDING)/CELL),r=Math.round((y-PADDING)/CELL);if(r<0||r>14||c<0||c>14||state.board[r][c])return;stomp.send("/app/game.move",{},JSON.stringify({commandId:id("move"),roomId:ROOM_ID,expectedStateVersion:state.stateVersion,row:r,col:c}));});
+function showMobilePage(chat){document.getElementById("appRail").classList.toggle("show-chat",chat);document.getElementById("navBoard").classList.toggle("active",!chat);document.getElementById("navChat").classList.toggle("active",chat);}
+let touchX=0,touchY=0;document.getElementById("appRail").addEventListener("touchstart",e=>{touchX=e.changedTouches[0].clientX;touchY=e.changedTouches[0].clientY},{passive:true});document.getElementById("appRail").addEventListener("touchend",e=>{if(!mobileDevice())return;const dx=e.changedTouches[0].clientX-touchX,dy=e.changedTouches[0].clientY-touchY;if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.25)showMobilePage(dx<0);},{passive:true});
+function toast(text,type=""){const el=document.getElementById("toast");el.textContent=text;el.className="toast "+type;el.style.display="block";clearTimeout(el._t);el._t=setTimeout(()=>el.style.display="none",2800);}
+function id(prefix){return prefix+"-"+Date.now()+"-"+Math.random().toString(16).slice(2)}
+function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+</script>
 </body>
 </html>

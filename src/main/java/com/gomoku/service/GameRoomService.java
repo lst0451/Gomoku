@@ -7,6 +7,8 @@ import com.gomoku.dto.request.AiSwitchRequest;
 import com.gomoku.dto.request.JoinRoomRequest;
 import com.gomoku.dto.request.MoveRequest;
 import com.gomoku.dto.request.SurrenderRequest;
+import com.gomoku.dto.request.GameSettingsRequest;
+import com.gomoku.dto.request.RestartGameRequest;
 import com.gomoku.dto.response.*;
 import com.gomoku.model.entity.GameRoom;
 import com.gomoku.model.entity.Move;
@@ -29,6 +31,8 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.List;
+import java.util.Comparator;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -50,6 +54,8 @@ public class GameRoomService implements RoomMembershipValidator {
     public static final long DEFAULT_TURN_TIMEOUT_MS = 30_000L;       // 30秒落子倒计时
     public static final long DEFAULT_DISCONNECT_GRACE_MS = 45_000L;   // 45秒掉线保留期
     public static final String SYSTEM_AI_ID = "SYSTEM_AI";
+    public static final int MIN_TURN_TIME_SECONDS = 5;
+    public static final int MAX_TURN_TIME_SECONDS = 3600;
 
     private final ConcurrentHashMap<String, GameRoom> rooms = new ConcurrentHashMap<>();
     private final SimpMessagingTemplate messagingTemplate;
@@ -129,13 +135,16 @@ public class GameRoomService implements RoomMembershipValidator {
         try {
             String userId = principal.getUserId();
             String username = principal.getUsername();
-            room.addSession(userId, sessionId);
+            room.addSession(userId, username, sessionId);
 
             // 判定席位分配
             if (userId.equals(room.getPlayerBlackId())) {
                 log.info("Player BLACK reconnected: userId={}, roomId={}", userId, roomId);
             } else if (userId.equals(room.getPlayerWhiteId())) {
                 log.info("Player WHITE reconnected: userId={}, roomId={}", userId, roomId);
+            } else if (request.spectate()) {
+                room.getSpectatorUserIds().add(userId);
+                log.info("Joined as SPECTATOR: userId={}, roomId={}", userId, roomId);
             } else if (room.getPlayerBlackId() == null) {
                 // 首位加入者分配黑方 (房主)
                 room.setPlayerBlackId(userId);
@@ -148,14 +157,17 @@ public class GameRoomService implements RoomMembershipValidator {
                 room.setPlayerWhiteName(username);
                 String newGameId = "G-" + roomId + "-" + System.currentTimeMillis();
                 room.resetGame(newGameId);
-                long turnDeadline = System.currentTimeMillis() + DEFAULT_TURN_TIMEOUT_MS;
+                long timeoutMs = turnTimeoutMillis(room);
+                long turnDeadline = timeoutMs == 0 ? 0 : System.currentTimeMillis() + timeoutMs;
                 room.setTurnDeadline(turnDeadline);
                 log.info("Assigned PLAYER_WHITE and started game: userId={}, roomId={}, gameId={}",
                         userId, roomId, newGameId);
 
                 // 启动先手 (黑方) 首步 30 秒落子倒计时
                 long nextVer = room.getStateVersion() + 1;
-                timerContextToSchedule = new TimeoutContext(newGameId, PieceColor.BLACK, nextVer, turnDeadline);
+                if (timeoutMs > 0) {
+                    timerContextToSchedule = new TimeoutContext(newGameId, PieceColor.BLACK, nextVer, turnDeadline);
+                }
             } else {
                 // 席位已满，自动转为观战者
                 room.getSpectatorUserIds().add(userId);
@@ -169,10 +181,13 @@ public class GameRoomService implements RoomMembershipValidator {
                 if (blackActive && (room.isAiMode() || whiteActive)) {
                     gameTimerService.cancelDisconnectTimer(room);
                     room.setStatus(GameStatus.PLAYING);
-                    long turnDeadline = System.currentTimeMillis() + DEFAULT_TURN_TIMEOUT_MS;
+                    long timeoutMs = turnTimeoutMillis(room);
+                    long turnDeadline = timeoutMs == 0 ? 0 : System.currentTimeMillis() + timeoutMs;
                     room.setTurnDeadline(turnDeadline);
                     long nextVer = room.getStateVersion() + 1;
-                    timerContextToSchedule = new TimeoutContext(room.getGameId(), room.getCurrentTurn(), nextVer, turnDeadline);
+                    if (timeoutMs > 0) {
+                        timerContextToSchedule = new TimeoutContext(room.getGameId(), room.getCurrentTurn(), nextVer, turnDeadline);
+                    }
                     log.info("Room {} resumed from PAUSED to PLAYING after player {} reconnected", roomId, userId);
                 }
             }
@@ -186,7 +201,7 @@ public class GameRoomService implements RoomMembershipValidator {
 
         // 注册定时任务
         if (timerContextToSchedule != null) {
-            gameTimerService.scheduleTurnTimeout(roomId, timerContextToSchedule, DEFAULT_TURN_TIMEOUT_MS);
+            gameTimerService.scheduleTurnTimeout(roomId, timerContextToSchedule, turnTimeoutMillis(room));
         }
 
         // 锁外向加入用户单播全量快照，完成客户端渲染重构
@@ -231,11 +246,14 @@ public class GameRoomService implements RoomMembershipValidator {
 
             String newGameId = "G-AI-" + roomId + "-" + System.currentTimeMillis();
             room.resetGame(newGameId);
-            long turnDeadline = System.currentTimeMillis() + DEFAULT_TURN_TIMEOUT_MS;
+            long timeoutMs = turnTimeoutMillis(room);
+            long turnDeadline = timeoutMs == 0 ? 0 : System.currentTimeMillis() + timeoutMs;
             room.setTurnDeadline(turnDeadline);
             long newVer = room.nextVersion();
 
-            timerContext = new TimeoutContext(newGameId, PieceColor.BLACK, newVer, turnDeadline);
+            if (timeoutMs > 0) {
+                timerContext = new TimeoutContext(newGameId, PieceColor.BLACK, newVer, turnDeadline);
+            }
             stateEvent = buildStateUpdateEvent(room);
             log.info("AI mode switched: roomId={}, difficulty={}, gameId={}", roomId, request.difficulty(), newGameId);
         } finally {
@@ -243,7 +261,7 @@ public class GameRoomService implements RoomMembershipValidator {
         }
 
         if (timerContext != null) {
-            gameTimerService.scheduleTurnTimeout(roomId, timerContext, DEFAULT_TURN_TIMEOUT_MS);
+            gameTimerService.scheduleTurnTimeout(roomId, timerContext, turnTimeoutMillis(room));
         }
         if (stateEvent != null) {
             broadcastRoomState(roomId, stateEvent);
@@ -360,7 +378,8 @@ public class GameRoomService implements RoomMembershipValidator {
                 } else {
                     nextTurn = userColor.opposite();
                     room.setCurrentTurn(nextTurn);
-                    turnDeadline = now + DEFAULT_TURN_TIMEOUT_MS;
+                    long timeoutMs = turnTimeoutMillis(room);
+                    turnDeadline = timeoutMs == 0 ? 0 : now + timeoutMs;
                     room.setTurnDeadline(turnDeadline);
                 }
             }
@@ -368,7 +387,9 @@ public class GameRoomService implements RoomMembershipValidator {
             long newVersion = room.nextVersion();
 
             if (!isGameOver) {
-                nextTimerContext = new TimeoutContext(room.getGameId(), nextTurn, newVersion, turnDeadline);
+                if (turnDeadline > 0) {
+                    nextTimerContext = new TimeoutContext(room.getGameId(), nextTurn, newVersion, turnDeadline);
+                }
 
                 // 若为人机模式且下一手为 AI (白方)，构建快照准备异步计算
                 if (room.isAiMode() && nextTurn == PieceColor.WHITE) {
@@ -413,7 +434,7 @@ public class GameRoomService implements RoomMembershipValidator {
 
         // 调度下一回合倒计时
         if (nextTimerContext != null) {
-            gameTimerService.scheduleTurnTimeout(roomId, nextTimerContext, DEFAULT_TURN_TIMEOUT_MS);
+            gameTimerService.scheduleTurnTimeout(roomId, nextTimerContext, turnTimeoutMillis(room));
         }
 
         // 锁外异步广播事件
@@ -508,6 +529,98 @@ public class GameRoomService implements RoomMembershipValidator {
         }
     }
 
+    public void updateGameSettings(GameSettingsRequest request, UserPrincipal principal) {
+        GameRoom room = rooms.get(request.roomId());
+        if (room == null) {
+            sendError(principal.getUserId(), request.commandId(), ErrorCode.GAME_NOT_PLAYING, "房间不存在", 0);
+            return;
+        }
+
+        RoomStateUpdateEvent stateEvent = null;
+        room.getRoomLock().lock();
+        try {
+            long version = room.getStateVersion();
+            if (!principal.getUserId().equals(room.getPlayerBlackId())) {
+                sendError(principal.getUserId(), request.commandId(), ErrorCode.UNAUTHORIZED_ACTION,
+                        "仅黑方可设置思考时间", version);
+                return;
+            }
+            if (room.getStatus() == GameStatus.PLAYING || room.getStatus() == GameStatus.PAUSED) {
+                sendError(principal.getUserId(), request.commandId(), ErrorCode.UNAUTHORIZED_ACTION,
+                        "请在对局开始前或结束后设置思考时间", version);
+                return;
+            }
+            Integer seconds = request.turnTimeSeconds();
+            if (seconds == null || seconds == 0) {
+                room.setTurnTimeSeconds(null);
+            } else if (seconds < MIN_TURN_TIME_SECONDS || seconds > MAX_TURN_TIME_SECONDS) {
+                sendError(principal.getUserId(), request.commandId(), ErrorCode.INVALID_COORDINATES,
+                        "思考时间须为 5 到 3600 秒，或选择不限时", version);
+                return;
+            } else {
+                room.setTurnTimeSeconds(seconds);
+            }
+            room.nextVersion();
+            stateEvent = buildStateUpdateEvent(room);
+        } finally {
+            room.getRoomLock().unlock();
+        }
+        if (stateEvent != null) {
+            broadcastRoomState(request.roomId(), stateEvent);
+        }
+    }
+
+    public void restartGame(RestartGameRequest request, UserPrincipal principal) {
+        GameRoom room = rooms.get(request.roomId());
+        if (room == null) {
+            sendError(principal.getUserId(), request.commandId(), ErrorCode.GAME_NOT_PLAYING, "房间不存在", 0);
+            return;
+        }
+
+        RoomStateUpdateEvent stateEvent = null;
+        TimeoutContext timerContext = null;
+        room.getRoomLock().lock();
+        try {
+            long version = room.getStateVersion();
+            if (room.getStatus() != GameStatus.FINISHED) {
+                sendError(principal.getUserId(), request.commandId(), ErrorCode.UNAUTHORIZED_ACTION,
+                        "当前对局尚未结束", version);
+                return;
+            }
+            if (room.getPlayerColor(principal.getUserId()) == null) {
+                sendError(principal.getUserId(), request.commandId(), ErrorCode.NOT_A_PLAYER,
+                        "只有本局选手可以重新开局", version);
+                return;
+            }
+            if (room.getPlayerBlackId() == null || room.getPlayerWhiteId() == null) {
+                sendError(principal.getUserId(), request.commandId(), ErrorCode.GAME_NOT_PLAYING,
+                        "双方未就席，无法重新开局", version);
+                return;
+            }
+
+            gameTimerService.cancelAllTimers(room);
+            String gameId = "G-" + room.getRoomId() + "-" + UUID.randomUUID();
+            room.resetGame(gameId);
+            long timeoutMs = turnTimeoutMillis(room);
+            long deadline = timeoutMs == 0 ? 0 : System.currentTimeMillis() + timeoutMs;
+            room.setTurnDeadline(deadline);
+            long newVersion = room.nextVersion();
+            if (timeoutMs > 0) {
+                timerContext = new TimeoutContext(gameId, PieceColor.BLACK, newVersion, deadline);
+            }
+            stateEvent = buildStateUpdateEvent(room);
+        } finally {
+            room.getRoomLock().unlock();
+        }
+
+        if (timerContext != null) {
+            gameTimerService.scheduleTurnTimeout(request.roomId(), timerContext, turnTimeoutMillis(room));
+        }
+        if (stateEvent != null) {
+            broadcastRoomState(request.roomId(), stateEvent);
+        }
+    }
+
     /**
      * 回合落子超时回调处理 (由 GameTimerService 触发)
      */
@@ -579,10 +692,14 @@ public class GameRoomService implements RoomMembershipValidator {
                 }
 
                 room.removeSession(userId, sessionId);
+                boolean noActiveSessions = !room.hasActiveSessions(userId);
+                if (noActiveSessions) {
+                    room.getOnlineUserNames().remove(userId);
+                }
 
                 // 若该用户是棋手且其全部 Session 均已离线
                 boolean isPlayer = userId.equals(room.getPlayerBlackId()) || userId.equals(room.getPlayerWhiteId());
-                if (isPlayer && !room.hasActiveSessions(userId)) {
+                if (isPlayer && noActiveSessions) {
                     if (room.getStatus() == GameStatus.PLAYING) {
                         room.setStatus(GameStatus.PAUSED);
                         gameTimerService.cancelTurnTimer(room);
@@ -595,7 +712,14 @@ public class GameRoomService implements RoomMembershipValidator {
                         stateEvent = buildStateUpdateEvent(room);
                         log.info("Player {} disconnected all sessions from room {}. Room PAUSED for 45s grace period.",
                                 userId, roomId);
+                    } else {
+                        room.nextVersion();
+                        stateEvent = buildStateUpdateEvent(room);
                     }
+                } else if (noActiveSessions) {
+                    room.getSpectatorUserIds().remove(userId);
+                    room.nextVersion();
+                    stateEvent = buildStateUpdateEvent(room);
                 }
             } finally {
                 room.getRoomLock().unlock();
@@ -686,6 +810,8 @@ public class GameRoomService implements RoomMembershipValidator {
                 room.getCurrentTurn(),
                 room.getOccupiedCount(),
                 room.getTurnDeadline(),
+                room.getTurnTimeSeconds(),
+                onlineUsers(room),
                 System.currentTimeMillis()
         );
     }
@@ -742,10 +868,24 @@ public class GameRoomService implements RoomMembershipValidator {
                 playerWhite,
                 room.getCurrentTurn(),
                 room.getTurnDeadline(),
+                room.getTurnTimeSeconds(),
+                onlineUsers(room),
                 room.getOccupiedCount(),
                 boardCopy,
                 recentMoves,
                 recentChats
         );
+    }
+
+    private long turnTimeoutMillis(GameRoom room) {
+        return room.getTurnTimeSeconds() == null ? 0L : room.getTurnTimeSeconds() * 1000L;
+    }
+
+    private List<PlayerInfo> onlineUsers(GameRoom room) {
+        return room.getOnlineUserNames().entrySet().stream()
+                .filter(entry -> room.hasActiveSessions(entry.getKey()))
+                .map(entry -> new PlayerInfo(entry.getKey(), entry.getValue()))
+                .sorted(Comparator.comparing(PlayerInfo::username, String.CASE_INSENSITIVE_ORDER))
+                .toList();
     }
 }

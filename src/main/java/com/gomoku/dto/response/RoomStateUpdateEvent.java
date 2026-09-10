@@ -2,6 +2,7 @@ package com.gomoku.dto.response;
 
 import com.gomoku.model.enums.GameStatus;
 import com.gomoku.model.enums.PieceColor;
+import java.util.List;
 
 /**
  * 房间状态同步广播事件
@@ -18,6 +19,8 @@ public record RoomStateUpdateEvent(
     PieceColor currentTurn,
     int occupiedCount,
     long turnDeadline,
+    Integer turnTimeSeconds,
+    List<PlayerInfo> onlineUsers,
     long serverTimestamp
 ) {
     public static final String EVENT_TYPE = "ROOM_STATE_UPDATE";

@@ -27,6 +27,7 @@ public class GameRoom {
     private PieceColor winner;                    // 胜利方 (null 表示未决或平局)
     private boolean isAiMode;                     // 是否为人机模式
     private String aiDifficulty;                  // AI 难度 (EASY / MEDIUM / HARD)
+    private Integer turnTimeSeconds = 30;         // null 表示每回合不限时
 
     // 席位与连接管理
     private String playerBlackId;                 // 黑方用户ID
@@ -34,6 +35,7 @@ public class GameRoom {
     private String playerWhiteId;                 // 白方用户ID
     private String playerWhiteName;               // 白方昵称
     private final Map<String, Set<String>> userActiveSessions = new ConcurrentHashMap<>(); // userId -> active sessionIds
+    private final Map<String, String> onlineUserNames = new ConcurrentHashMap<>();          // userId -> display name
     private final Set<String> spectatorUserIds = ConcurrentHashMap.newKeySet();           // 观战用户ID集合
 
     // 棋局核心状态
@@ -125,6 +127,13 @@ public class GameRoom {
         }
     }
 
+    public void addSession(String userId, String username, String sessionId) {
+        addSession(userId, sessionId);
+        if (userId != null && username != null) {
+            onlineUserNames.put(userId, username);
+        }
+    }
+
     /**
      * 移除指定用户的会话
      */
@@ -161,6 +170,8 @@ public class GameRoom {
     public void setAiMode(boolean aiMode) { isAiMode = aiMode; }
     public String getAiDifficulty() { return aiDifficulty; }
     public void setAiDifficulty(String aiDifficulty) { this.aiDifficulty = aiDifficulty; }
+    public Integer getTurnTimeSeconds() { return turnTimeSeconds; }
+    public void setTurnTimeSeconds(Integer turnTimeSeconds) { this.turnTimeSeconds = turnTimeSeconds; }
 
     public String getPlayerBlackId() { return playerBlackId; }
     public void setPlayerBlackId(String playerBlackId) { this.playerBlackId = playerBlackId; }
@@ -173,6 +184,7 @@ public class GameRoom {
     public void setPlayerWhiteName(String playerWhiteName) { this.playerWhiteName = playerWhiteName; }
 
     public Map<String, Set<String>> getUserActiveSessions() { return userActiveSessions; }
+    public Map<String, String> getOnlineUserNames() { return onlineUserNames; }
     public Set<String> getSpectatorUserIds() { return spectatorUserIds; }
 
     public PieceColor getCurrentTurn() { return currentTurn; }

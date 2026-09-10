@@ -3,6 +3,8 @@ package com.gomoku.controller;
 import com.gomoku.dto.request.JoinRoomRequest;
 import com.gomoku.dto.request.MoveRequest;
 import com.gomoku.dto.request.SurrenderRequest;
+import com.gomoku.dto.request.GameSettingsRequest;
+import com.gomoku.dto.request.RestartGameRequest;
 import com.gomoku.security.UserPrincipal;
 import com.gomoku.service.GameRoomService;
 import org.slf4j.Logger;
@@ -76,6 +78,20 @@ public class GameMessageController {
             gameRoomService.handleSurrender(request, userPrincipal);
         } else {
             log.warn("Unauthorized /app/game.surrender call with non-UserPrincipal");
+        }
+    }
+
+    @MessageMapping("/game.settings")
+    public void updateSettings(@Payload GameSettingsRequest request, Principal principal) {
+        if (principal instanceof UserPrincipal userPrincipal) {
+            gameRoomService.updateGameSettings(request, userPrincipal);
+        }
+    }
+
+    @MessageMapping("/game.restart")
+    public void restart(@Payload RestartGameRequest request, Principal principal) {
+        if (principal instanceof UserPrincipal userPrincipal) {
+            gameRoomService.restartGame(request, userPrincipal);
         }
     }
 

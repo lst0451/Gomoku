@@ -56,6 +56,11 @@ public class ChatService {
         String commandId = request.commandId();
         String roomId = request.roomId();
 
+        if (principal.isGuest()) {
+            sendError(userId, commandId, ErrorCode.UNAUTHORIZED_ACTION, "请输入用户名后再参与聊天");
+            return false;
+        }
+
         // 1. 令牌桶限流检查 (每秒最多2条)
         TokenBucket bucket = userBuckets.computeIfAbsent(userId, k -> new TokenBucket());
         if (!bucket.tryConsume()) {
