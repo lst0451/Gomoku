@@ -12,7 +12,7 @@
 button,input,select{font:inherit}button{border:0;cursor:pointer}.topbar{height:68px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #ffffff12;background:#09111ed9;backdrop-filter:blur(14px);position:sticky;top:0;z-index:20}
 .brand{display:flex;align-items:center;gap:11px;font-weight:750}.logo{width:38px;height:38px;display:grid;place-items:center;border-radius:12px;background:linear-gradient(135deg,#4e8cff,#8258ef);box-shadow:0 8px 28px #4e8cff44}.connection{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px}.dot{width:9px;height:9px;border-radius:50%;background:var(--red)}.dot.on{background:var(--green);box-shadow:0 0 12px var(--green)}
 .desktop-layout{max-width:1520px;margin:auto;padding:20px;display:grid;grid-template-columns:290px minmax(480px,1fr) 330px;gap:18px}.panel{background:#131d2ee8;border:1px solid #ffffff13;border-radius:18px;padding:17px;box-shadow:0 16px 44px #0004}.stack{display:flex;flex-direction:column;gap:14px}.section-title{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.badge{padding:4px 9px;border-radius:99px;background:#4e8cff1f;color:#8fb6ff;letter-spacing:0}
-.player{display:flex;align-items:center;gap:11px;padding:12px;border-radius:13px;background:#ffffff08;border:1px solid #ffffff0d}.player.active{border-color:var(--blue);box-shadow:0 0 18px #4e8cff2c}.stone{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:11px}.black{background:#111827;color:white;box-shadow:inset 4px 4px 7px #ffffff23}.white{background:#eef3fb;color:#172033}.name{font-weight:700}.meta{font-size:12px;color:var(--muted);margin-top:3px}
+.player{display:flex;align-items:center;gap:11px;padding:12px;border-radius:13px;background:#ffffff08;border:1px solid #ffffff0d}.player.active{border-color:var(--blue);box-shadow:0 0 18px #4e8cff2c}.stone{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:11px}.black{background:#111827;color:white;box-shadow:inset 4px 4px 7px #ffffff23}.white{background:#eef3fb;color:#172033}.name{font-weight:700}.meta{font-size:12px;color:var(--muted);margin-top:3px}.ai-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}.mobile-ai{display:none;width:100%;gap:8px}.mobile-ai .field{min-width:0}.mobile-ai .btn{white-space:nowrap}
 .timer-head,.row{display:flex;align-items:center;justify-content:space-between;gap:9px}.timer-track{height:7px;background:#ffffff12;border-radius:5px;overflow:hidden}.timer-fill{height:100%;width:0;background:var(--blue);transition:width .2s linear}.field{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 11px;background:#0a1322;color:var(--text);outline:none}.field:focus{border-color:var(--blue)}.btn{padding:10px 14px;border-radius:10px;font-weight:700;color:white;background:var(--blue)}.btn.secondary{background:#ffffff10;border:1px solid #ffffff17}.btn.danger{background:#ee647021;color:#ff9ca4;border:1px solid #ee647059}.btn:disabled{opacity:.42;cursor:not-allowed}.hint{font-size:12px;line-height:1.5;color:var(--muted)}
 .board-page{min-width:0;display:flex;flex-direction:column;align-items:center;gap:14px}.board-shell{width:min(100%,650px);aspect-ratio:1;padding:clamp(8px,2.4vw,22px);border:5px solid #5d4025;border-radius:15px;background:#8b6238;box-shadow:0 22px 55px #0008;display:grid;place-items:center}canvas{display:block;width:100%;height:100%;background:var(--wood);border-radius:5px;touch-action:manipulation}.board-status{width:min(100%,650px);display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;border-radius:12px;background:#131d2ee8;border:1px solid #ffffff12;font-size:13px}.mobile-actions{display:none;width:100%;gap:8px}.mobile-actions .btn{flex:1}
 .chat-panel{min-height:640px}.chat-list{height:390px;overflow:auto;display:flex;flex-direction:column;gap:8px;padding-right:3px}.message{padding:9px 10px;background:#ffffff08;border-radius:11px;font-size:14px;line-height:1.4}.message-head{display:flex;gap:7px;margin-bottom:4px;color:var(--muted);font-size:11px}.role{color:#8fb6ff}.chat-lock{padding:12px;border:1px dashed #ffffff22;border-radius:12px;background:#ffffff05}.online-list{display:flex;flex-wrap:wrap;gap:7px}.online-user{padding:5px 9px;border-radius:99px;background:#35c58b18;color:#7be0b8;font-size:12px}.online-user:before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);margin-right:6px}
@@ -22,7 +22,7 @@ button,input,select{font:inherit}button{border:0;cursor:pointer}.topbar{height:6
  body{overflow:hidden}.topbar{height:58px;padding:0 14px}.brand span:last-child{font-size:15px}.connection{font-size:12px}
  .desktop-layout{display:flex;width:200vw;height:calc(100dvh - 58px);max-width:none;margin:0;padding:0;gap:0;transition:transform .28s ease}.desktop-layout.show-chat{transform:translateX(-100vw)}
  .side-panel{display:none}.board-page,.chat-panel{width:100vw;min-width:100vw;height:calc(100dvh - 58px);padding:12px 12px 72px;overflow:auto}
- .board-page{justify-content:flex-start}.board-shell{width:min(calc(100vw - 24px),calc(100dvh - 235px));min-width:280px}.board-status{font-size:12px}.mobile-actions{display:flex}
+ .board-page{justify-content:flex-start}.board-shell{width:min(calc(100vw - 24px),calc(100dvh - 290px));min-width:280px}.board-status{font-size:12px}.mobile-actions,.mobile-ai{display:flex}
  .chat-panel{border:0;border-radius:0;min-height:0;background:transparent;box-shadow:none}.chat-list{height:auto;min-height:260px;flex:1}
  .mobile-nav{position:fixed;display:grid;grid-template-columns:1fr 1fr;left:12px;right:12px;bottom:max(10px,env(safe-area-inset-bottom));height:50px;background:#101b2df2;border:1px solid #ffffff17;border-radius:14px;padding:5px;z-index:25}.mobile-nav button{border-radius:10px;color:var(--muted);background:transparent;font-weight:700}.mobile-nav button.active{background:var(--blue);color:white}
  .toast{left:14px;right:14px;bottom:72px}
@@ -46,6 +46,8 @@ button,input,select{font:inherit}button{border:0;cursor:pointer}.topbar{height:6
   <div class="section-title"><span>思考时间</span></div>
   <div class="row"><select id="timeMode" class="field" onchange="toggleCustomTime()"><option value="0">不限时</option><option value="30" selected>30 秒</option><option value="60">60 秒</option><option value="custom">自定义</option></select><input id="customTime" class="field" type="number" min="5" max="3600" value="90" hidden></div>
   <button class="btn secondary" onclick="saveTimeSetting()">保存时间设置</button>
+  <div class="section-title"><span>单人对战</span><span class="badge">你执黑</span></div>
+  <div class="ai-controls"><select id="aiDifficulty" class="field" onchange="syncAiDifficulty(this.value)"><option value="EASY">简单</option><option value="MEDIUM" selected>中等</option><option value="HARD">困难</option></select><button id="aiBtn" class="btn secondary" onclick="startSinglePlayer()">挑战 AI</button></div>
   <button id="seatBtn" class="btn" onclick="takeSeat()">加入对局</button>
   <button id="surrenderBtn" class="btn danger" onclick="openSurrender()" disabled>认输</button>
   <button id="restartBtn" class="btn secondary" onclick="restartGame()" hidden>重新开局</button>
@@ -54,6 +56,7 @@ button,input,select{font:inherit}button{border:0;cursor:pointer}.topbar{height:6
  <section class="board-page">
   <div class="board-shell"><canvas id="board" width="600" height="600" aria-label="十五路五子棋棋盘"></canvas></div>
   <div class="board-status"><span id="mobileTurn">等待对局开始</span><span><b id="stoneCount">0</b> / 225</span><span id="mobileTimer">不限时</span></div>
+  <div class="mobile-ai"><select id="mobileAiDifficulty" class="field" onchange="syncAiDifficulty(this.value)"><option value="EASY">简单 AI</option><option value="MEDIUM" selected>中等 AI</option><option value="HARD">困难 AI</option></select><button id="mobileAiBtn" class="btn secondary" onclick="startSinglePlayer()">单人对战</button></div>
   <div class="mobile-actions"><button id="mobileSeatBtn" class="btn" onclick="takeSeat()">加入对局</button><button id="mobileSurrenderBtn" class="btn danger" onclick="openSurrender()">认输</button><button id="mobileRestartBtn" class="btn secondary" onclick="restartGame()" hidden>再来一局</button></div>
   <div class="hint">手机端向左滑动查看聊天与在线用户</div>
  </section>
@@ -75,7 +78,7 @@ button,input,select{font:inherit}button{border:0;cursor:pointer}.topbar{height:6
 <script>
 const ROOM_ID="MAIN";
 const BOARD_SIZE=15,PADDING=30,CELL=(600-PADDING*2)/(BOARD_SIZE-1);
-let stomp=null,connected=false,token="",user={userId:"",username:"访客",isGuest:true},subscriptions=[],timerHandle=null,hover=null;
+let stomp=null,connected=false,token="",user={userId:"",username:"访客",isGuest:true},subscriptions=[],timerHandle=null,hover=null,pendingAiDifficulty=null;
 let state={status:"WAITING",stateVersion:0,currentTurn:null,turnDeadline:0,turnTimeSeconds:30,occupiedCount:0,board:Array.from({length:15},()=>Array(15).fill(0)),playerBlack:null,playerWhite:null,onlineUsers:[],lastMove:null};
 const canvas=document.getElementById("board"),ctx=canvas.getContext("2d");
 const mobileDevice=()=>matchMedia("(max-width:700px)").matches||/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
@@ -107,6 +110,23 @@ function subscribeRoom(){subscriptions.forEach(s=>{try{s.unsubscribe()}catch(e){
 ];}
 function sendJoin(spectate){if(connected)stomp.send("/app/room.join",{},JSON.stringify({commandId:id("join"),roomId:ROOM_ID,spectate}));}
 function takeSeat(){if(user.isGuest){showMobilePage(true);document.getElementById("username").focus();toast("先输入用户名，再加入对局");return;}sendJoin(false);}
+function syncAiDifficulty(value){document.getElementById("aiDifficulty").value=value;document.getElementById("mobileAiDifficulty").value=value;}
+function startSinglePlayer(){
+ if(user.isGuest){showMobilePage(true);document.getElementById("username").focus();toast("先输入用户名，再开始单人对战");return;}
+ if(!connected){toast("正在重新连接，请稍候","error");return;}
+ if(state.status!=="WAITING"||state.playerWhite){toast("当前对局无法切换为单人模式","error");return;}
+ if(state.playerBlack&&state.playerBlack.userId!==user.userId){toast("已有玩家占用黑方席位","error");return;}
+ pendingAiDifficulty=document.getElementById("aiDifficulty").value;
+ if(state.playerBlack?.userId===user.userId)maybeStartAi();else sendJoin(false);
+}
+function maybeStartAi(){
+ if(!pendingAiDifficulty||!connected)return;
+ if(state.status!=="WAITING"||state.playerWhite){pendingAiDifficulty=null;toast("当前对局无法启动 AI","error");return;}
+ if(state.playerBlack?.userId!==user.userId)return;
+ const difficulty=pendingAiDifficulty;pendingAiDifficulty=null;
+ stomp.send("/app/game.ai_switch",{},JSON.stringify({commandId:id("ai"),roomId:ROOM_ID,difficulty}));
+ toast("正在创建"+({EASY:"简单",MEDIUM:"中等",HARD:"困难"}[difficulty])+" AI 对局");
+}
 function applyState(d){if(d.gameId&&d.gameId!==state.gameId&&d.occupiedCount===0){state.board=Array.from({length:15},()=>Array(15).fill(0));state.lastMove=null;closeModal("finishModal");}Object.assign(state,d);updateUi();}
 function applySnapshot(d){Object.assign(state,d);state.board=d.board||state.board;state.lastMove=d.recentMoves?.at(-1)||null;const list=document.getElementById("chatList");d.recentChats?.forEach(appendChat);updateUi();renderBoard();}
 function gameEvent(d){
@@ -124,9 +144,10 @@ function updateUi(){
  const playingMine=mine&&state.status==="PLAYING";document.getElementById("surrenderBtn").disabled=!playingMine;document.getElementById("mobileSurrenderBtn").disabled=!playingMine;
  document.getElementById("seatBtn").disabled=mine;document.getElementById("seatBtn").textContent=mine?"已入座":"加入对局";document.getElementById("mobileSeatBtn").disabled=mine;document.getElementById("mobileSeatBtn").textContent=mine?"已入座":"加入对局";
  const canRestart=mine&&state.status==="FINISHED";document.getElementById("restartBtn").hidden=!canRestart;document.getElementById("mobileRestartBtn").hidden=!canRestart;document.getElementById("finishRestartBtn").hidden=!canRestart;
+ const canStartAi=state.status==="WAITING"&&!state.playerWhite&&(!state.playerBlack||state.playerBlack.userId===user.userId);document.getElementById("aiBtn").disabled=!canStartAi;document.getElementById("mobileAiBtn").disabled=!canStartAi;
  const mode=document.getElementById("timeMode");if(state.turnTimeSeconds==null)mode.value="0";else if([30,60].includes(state.turnTimeSeconds))mode.value=String(state.turnTimeSeconds);else{mode.value="custom";document.getElementById("customTime").value=state.turnTimeSeconds;}toggleCustomTime();
  const users=state.onlineUsers||[];document.getElementById("onlineCount").textContent=users.length+" 人在线";document.getElementById("onlineList").innerHTML=users.map(x=>'<span class="online-user">'+esc(x.username)+'</span>').join("")||'<span class="hint">暂无在线用户</span>';
- syncTimer();renderBoard();
+ syncTimer();renderBoard();maybeStartAi();
 }
 function syncTimer(){clearInterval(timerHandle);const tick=()=>{if(!state.turnTimeSeconds){document.getElementById("timerText").textContent="不限时";document.getElementById("mobileTimer").textContent="不限时";document.getElementById("timerBar").style.width="100%";return;}if(!state.turnDeadline){const label=state.turnTimeSeconds+" 秒/步";document.getElementById("timerText").textContent=label;document.getElementById("mobileTimer").textContent=label;document.getElementById("timerBar").style.width="100%";return;}const left=Math.max(0,Math.ceil((state.turnDeadline-Date.now())/1000)),pct=Math.max(0,Math.min(100,left/state.turnTimeSeconds*100));document.getElementById("timerText").textContent=left+"s";document.getElementById("mobileTimer").textContent=left+"s";document.getElementById("timerBar").style.width=pct+"%";};tick();if(state.status==="PLAYING"&&state.turnTimeSeconds)timerHandle=setInterval(tick,200);}
 function toggleCustomTime(){document.getElementById("customTime").hidden=document.getElementById("timeMode").value!=="custom";}
